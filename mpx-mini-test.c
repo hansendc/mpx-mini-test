@@ -1,10 +1,6 @@
 /*
  * mpx-mini-test.c: routines to test Intel MPX (Memory Protection eXtentions)
  *
- * INTEL CONFIDENTIAL
- * Copyright (c) 2015, Intel Corporation
- * All rights reserved.
- *
  * Written by:
  * "Ren, Qiaowei" <qiaowei.ren@intel.com>
  * "Wei, Gang" <gang.wei@intel.com>
