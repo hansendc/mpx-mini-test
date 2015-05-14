@@ -1,0 +1,5 @@
+
+ * Make mpx-dig.c able to get a bounds directory directly out of
+   a target process instead of having to guess at a location from
+   a big VMA.
+ * Add support for 32-bit binaries
