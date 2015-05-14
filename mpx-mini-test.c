@@ -31,19 +31,8 @@
 
 int inspect_every_this_many_mallocs = 100;
 int zap_all_every_this_many_mallocs = 1000;
-#define MB (1UL<<20)
-
-#ifndef DEBUG_LEVEL
-#define DEBUG_LEVEL 0
-#endif
-#define dprintf_level(level, args...) do { if(level <= DEBUG_LEVEL) printf(args); } while(0)
-#define dprintf1(args...) dprintf_level(1, args)
-#define dprintf2(args...) dprintf_level(2, args)
-#define dprintf3(args...) dprintf_level(3, args)
-#define dprintf4(args...) dprintf_level(4, args)
 
 extern long nr_incore(void *ptr, int size_bytes);
-#define PAGE_SIZE 4096
 
 #define __always_inline inline __attribute__((always_inline)
 
@@ -57,6 +46,8 @@ extern long nr_incore(void *ptr, int size_bytes);
 #include <stdlib.h>
 #include <ucontext.h>
 #include <sys/mman.h>
+#include "mpx-debug.h"
+#include "mpx-mm.h"
 
 unsigned int sleep(unsigned int seconds);
 

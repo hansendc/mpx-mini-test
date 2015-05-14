@@ -1,26 +1,18 @@
 #define _LARGEFILE64_SOURCE
+
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>
-#include<stdio.h> 
-#include<errno.h> 
-#include<sys/types.h> 
-#include<sys/stat.h> 
-#include<unistd.h> 
-#include<sys/mman.h> 
-#include<string.h> 
-#include<fcntl.h> 
-
-#ifndef DEBUG_LEVEL
-#define DEBUG_LEVEL 0
-#endif
-#define dprintf_level(level, args...) do { if(level <= DEBUG_LEVEL) printf(args); } while(0)
-#define dprintf1(args...) dprintf_level(1, args)
-#define dprintf2(args...) dprintf_level(2, args)
-#define dprintf3(args...) dprintf_level(3, args)
-#define dprintf4(args...) dprintf_level(4, args)
-
-#define PAGE_SIZE 4096
+#include <stdio.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <string.h>
+#include <fcntl.h>
+#include "mpx-debug.h"
+#include "mpx-mm.h"
 
 unsigned long bounds_dir_global;
 
