@@ -218,13 +218,12 @@ int dump_table(unsigned long table_vaddr, unsigned long base_controlled_vaddr, u
 		}
 		if (!vaddr_mapped_by_range(this_bt_entry_for_vaddr)) {
 			printf("bt_entry_buf: %p\n", bt_entry_buf);
-			printf("there is a bte for %lx but no mapping\n", 
+			printf("there is a bte for %lx but no mapping\n",
 					this_bt_entry_for_vaddr);
 			printf("          bde   vaddr: %016lx\n", bde_vaddr);
 			printf("base_controlled_vaddr: %016lx\n", base_controlled_vaddr);
 			printf("          table_vaddr: %016lx\n", table_vaddr);
 			printf("          entry vaddr: %016lx @ offset %lx\n", table_vaddr + offset_inside_bt, offset_inside_bt);
-			
 			do_abort = 1;
 			abort();
 		}
@@ -341,13 +340,13 @@ void *fill_bounds_dir_buf_self(long byte_offset_inside_bounds_dir,
 
 int inspect_pid(int pid)
 {
-	long offset_inside_bounds_dir; 
+	long offset_inside_bounds_dir;
 	char bounds_dir_buf[sizeof(unsigned long) * (1UL << 15)];
 	char *dig_bounds_dir_ptr;
 	int total_entries = 0;
 	int nr_populated_bdes = 0;
 	int inspect_self;
-	
+
 	if (getpid() == pid) {
 		dprintf4("inspecting self\n");
 		inspect_self = 1;
@@ -384,8 +383,8 @@ int inspect_pid(int pid)
 }
 
 #ifndef MPX_DIG_SELF
-int main(int argc, char **argv) 
-{ 
+int main(int argc, char **argv)
+{
 	int err;
         char *c;
 	unsigned long bounds_dir_entry;

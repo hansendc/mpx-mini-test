@@ -56,7 +56,7 @@ unsigned int sleep(unsigned int seconds);
 #define MPX_L2_NODE_ADDR_MASK	0xfffffffcUL
 
 #define REG_IP_IDX	REG_EIP
-#define REX_PREFIX 
+#define REX_PREFIX
 
 #define XSAVE_OFFSET_IN_FPMEM	sizeof(struct _libc_fpstate)
 
@@ -234,7 +234,7 @@ static uint64_t read_mpx_status_sig(ucontext_t *uctxt)
 
 static uint8_t *get_next_inst_ip(uint8_t *addr)
 {
-	uint8_t *ip = addr;	
+	uint8_t *ip = addr;
 
 	uint8_t  sib;
 
@@ -259,7 +259,7 @@ static uint8_t *get_next_inst_ip(uint8_t *addr)
 	/*
 	* Make sure we have a MPX instruction.
 	*/
-	if (*ip++ != 0x0f) {    
+	if (*ip++ != 0x0f) {
 		return addr;
 	}
 
@@ -294,7 +294,7 @@ static uint8_t *get_next_inst_ip(uint8_t *addr)
 			sib = *ip++;
 			//uint8_t ss = sib >> 6;
 			base = sib & 7;
-			switch (mod) 
+			switch (mod)
 			{
 			case 0:
 				if (base == 5) {
@@ -313,7 +313,7 @@ static uint8_t *get_next_inst_ip(uint8_t *addr)
 
 		} else {
 			// MODRM addressing
-			switch(mod) 
+			switch(mod)
 			{
 			case 0:
 				if (rm == 5) {
@@ -335,7 +335,7 @@ static uint8_t *get_next_inst_ip(uint8_t *addr)
 	//for (; addr < ip; addr++)
 	//	printf("%02x ", *addr);
 	//printf("\n");
-	return ip;	
+	return ip;
 }
 
 static int br_count = 0;
@@ -496,7 +496,7 @@ bool process_specific_init(void)
 	unsigned long size;
 	unsigned long *dir;
 	unsigned long _dir;
-  
+
 	size = 2UL << 31; // 2GB
 	if (sizeof(unsigned long) == 4)
 		size = 4UL << 20; // 4MB
@@ -514,7 +514,7 @@ bool process_specific_init(void)
 		unsigned long i;
 		for (i = 0; i < size / sizeof(unsigned long); i++) {
 			// point it up at the kernel address space
-#ifdef __x86_64__  
+#ifdef __x86_64__
 			dir[i] = 0xffffffff00000001UL;
 #else
 			dir[i] = 0xffff0001UL;
@@ -526,7 +526,7 @@ bool process_specific_init(void)
 	enable_pl(dir);
 	if (prctl(43, 0, 0, 0, 0)) {
 		printf("no MPX support\n");
-		abort();		
+		abort();
 		return false;
 	}
 
@@ -598,7 +598,7 @@ void mpx_cleanup(void)
 //#endif
 
 uint64_t shadow_plb[4][2]; // shadow MPX bound registers
-//uint64_t shadow_plc, shadow_pls;  // shadow config and status registers 
+//uint64_t shadow_plc, shadow_pls;  // shadow config and status registers
 ULONG_MPX shadow_map[4];
 uint64_t num_lower_brs = 0;
 uint64_t num_upper_brs = 0;
@@ -616,7 +616,7 @@ uint64_t num_upper_brs = 0;
    66 0F 1B /r BNDMOV bnd1/m128, bnd2
    F2 0F 1A /r BNDCU bnd, r/m64
    F2 0F 1B /r BNDCN bnd, r/m64
-   F3 0F 1A /r BNDCL bnd, r/m64 
+   F3 0F 1A /r BNDCL bnd, r/m64
    F3 0F 1B /r BNDMK bnd, m64
 */
 
@@ -625,7 +625,7 @@ static __always_inline void xsave_state(void *_fx, uint64_t mask)
         uint32_t lmask = mask;
         uint32_t hmask = mask >> 32;
 	unsigned char *fx = _fx;
-	
+
 
         asm volatile(".byte " REX_PREFIX "0x0f,0xae,0x27\n\t"
                      : : "D" (fx), "m" (*fx), "a" (lmask), "d" (hmask)
@@ -655,7 +655,7 @@ static __always_inline void mpx_make_bound_helper(ULONG_MPX ptr, ULONG_MPX size)
 
 static __always_inline void mpx_check_lowerbound_helper(ULONG_MPX ptr)
 {
-	// F3 0F 1A /r BNDCL bnd, r/m64 
+	// F3 0F 1A /r BNDCL bnd, r/m64
 	// f3 0f 1a 01          	bndcl  (%rcx),%bnd0
         asm volatile(".byte " "0xf3,0x0f,0x1a,0x01\n\t"
                      : : "c" (ptr)
@@ -774,7 +774,7 @@ long int __daverandom(int line)
 
 
 uint8_t *get_random_addr()
-{	
+{
 	uint8_t*addr = (uint8_t *)(unsigned long)(rand() % MAX_ADDR_TESTED);
 	return (addr - (ULONG_MPX)addr % sizeof(uint8_t *));
 }
@@ -805,7 +805,7 @@ static inline bool compare_context(void *__xsave_buffer)
 
 	return true;
 }
-	
+
 void mkbnd_shadow(uint8_t *ptr, int index, long offset)
 {
 	uint64_t *lower = (uint64_t *)&(shadow_plb[index][0]);
@@ -928,7 +928,7 @@ static __always_inline void mpx_test_helper3_shadow(uint8_t *buf, uint8_t *ptr)
 static __always_inline void mpx_test_helper4(uint8_t *buf, uint8_t *ptr)
 {
 	mpx_store_dsc_helper((ULONG_MPX)buf, (ULONG_MPX)ptr);
-	mpx_make_bound_helper((ULONG_MPX)(ptr+0x12), 0x1800); 
+	mpx_make_bound_helper((ULONG_MPX)(ptr+0x12), 0x1800);
 }
 
 static __always_inline void mpx_test_helper4_shadow(uint8_t *buf, uint8_t *ptr)
@@ -1006,7 +1006,7 @@ long cover_buf_with_bt_entries(void *buf, long buf_len)
 	int i;
 	long nr_to_fill;
 	int ratio = 1000;
-	
+
 	// Fill about 1/100 of the space with bt entries
 	nr_to_fill = buf_len / (sizeof(unsigned long) * ratio);
 	//if (!(daverandom() % 10))
@@ -1020,7 +1020,7 @@ long cover_buf_with_bt_entries(void *buf, long buf_len)
 		buf++;
 		buf_len--;
 	}
-	// We are storing pointers, so make 
+	// We are storing pointers, so make
 	unsigned long buf_len_in_ptrs = buf_len / sizeof(void *);
 
 	for (i = 0; i < nr_to_fill; i++) {
@@ -1057,7 +1057,7 @@ unsigned long align_up(unsigned long alignme, unsigned long align_to)
 /*
  * Using 1MB alignment guarantees that each no allocation
  * will overlap with another's bounds tables.
- * 
+ *
  * We have to cook our own allocator here.  malloc() can
  * mix other allocation with ours which means that even
  * if we free all of our allocations, there might still
@@ -1098,7 +1098,6 @@ void *dave_alloc(unsigned long sz)
 }
 void dave_free(void *ptr, long sz)
 {
-		
 	dprintf2("%s() ptr: %p\n", __func__, ptr);
 	if ((unsigned long)ptr > 0x100000000000) {
 		dprintf1("uh oh !!!!!!!!!!!!!!! pointer too high: %p\n", ptr);
