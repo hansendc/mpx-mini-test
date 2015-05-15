@@ -1330,7 +1330,7 @@ int main(int argc, char **argv)
 	    (argc >= 2 && !strcmp(argv[1], "tabletest"))) {
 		static time_t last_print = 0;
 		time_t now;
-	
+
 		int i;
 		for (i = 0; i < 20000000; i++) {
 			time(&now);
