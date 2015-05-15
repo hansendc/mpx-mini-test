@@ -42,10 +42,21 @@ extern long nr_incore(void *ptr, int size_bytes);
 #include <stdlib.h>
 #include <ucontext.h>
 #include <sys/mman.h>
+
+#include "mpx-hw.h"
 #include "mpx-debug.h"
 #include "mpx-mm.h"
 
 unsigned int sleep(unsigned int seconds);
+
+static void test_failed(void)
+{
+	abort();
+	sleep(999);
+}
+
+// Error Printf
+#define eprintf(args...)	fprintf(stderr, args)
 
 #ifdef __i386__
 
@@ -395,19 +406,16 @@ void handler(int signum, siginfo_t* si, void* vucontext)
 			exit(3);
 		}
 	} else if (trapno == 14) {
-		fprintf(stderr,
-			"ERROR: In signal handler, page fault, trapno = %d, ip = %016lx\n",
+		eprintf("ERROR: In signal handler, page fault, trapno = %d, ip = %016lx\n",
 			trapno, ip);
-		fprintf(stderr, "si_addr %p\n", si->si_addr);
-		fprintf(stderr, "REG_ERR: %lx\n", (unsigned long)uctxt->uc_mcontext.gregs[REG_ERR]);
-		sleep(999);
-		exit(1);
+		eprintf("si_addr %p\n", si->si_addr);
+		eprintf("REG_ERR: %lx\n", (unsigned long)uctxt->uc_mcontext.gregs[REG_ERR]);
+		test_failed();
 	} else {
-		fprintf(stderr,"unexpected trap %d! at 0x%lx\n", trapno, ip);
-		fprintf(stderr, "si_addr %p\n", si->si_addr);
-		fprintf(stderr, "REG_ERR: %lx\n", (unsigned long)uctxt->uc_mcontext.gregs[REG_ERR]);
-		sleep(999);
-		exit(2);
+		eprintf("unexpected trap %d! at 0x%lx\n", trapno, ip);
+		eprintf("si_addr %p\n", si->si_addr);
+		eprintf("REG_ERR: %lx\n", (unsigned long)uctxt->uc_mcontext.gregs[REG_ERR]);
+		test_failed();
 	}
 }
 
@@ -467,21 +475,22 @@ void enable_pl(void* l1base)
 	//xsave_buf->bndcsr.cfg_reg_u |= 2; // set bndpreserve
 	xsave_buf->bndcsr.status_reg = 0;
 
-	printf("bf xrstor\n");
-	printf("xsave cndcsr: status %jx, configu %jx\n",
+	dprintf2("bf xrstor\n");
+	dprintf2("xsave cndcsr: status %jx, configu %jx\n",
 	       xsave_buf->bndcsr.status_reg, xsave_buf->bndcsr.cfg_reg_u );
 	xrstor_state(xsave_buf, 0x18);
-	printf("after xrstor\n");
+	dprintf2("after xrstor\n");
 
 	xsave_state_1(xsave_buf, 0x18);
 	//print_buffer(buffer, sizeof(*xsave_buf));
 
-	printf("xsave cndcsr: status %jx, configu %jx\n",
+	dprintf1("xsave bndcsr: status %jx, configu %jx\n",
 	       xsave_buf->bndcsr.status_reg, xsave_buf->bndcsr.cfg_reg_u);
 }
 
 #include <sys/prctl.h>
-unsigned long *bounds_dir_ptr;
+
+struct mpx_bounds_dir *bounds_dir_ptr;
 
 unsigned long __bd_incore(const char *func, int line)
 {
@@ -507,22 +516,9 @@ bool process_specific_init(void)
 	_dir = (unsigned long)dir;
 	_dir += 0xfffUL;
 	_dir &= ~0xfffUL;
-	dir = (void *)_dir;
-	bounds_dir_ptr = dir;
+	bounds_dir_ptr = (void *)_dir;
 	bd_incore();
-	if (0) {
-		unsigned long i;
-		for (i = 0; i < size / sizeof(unsigned long); i++) {
-			// point it up at the kernel address space
-#ifdef __x86_64__
-			dir[i] = 0xffffffff00000001UL;
-#else
-			dir[i] = 0xffff0001UL;
-#endif
-			//dir[i] &= ~0x1;
-		}
-	}
-	printf("dir: 0x%p -> 0x%lx\n", dir, _dir + size);
+	dprintf1("bounds directory: 0x%p -> 0x%lx\n", bounds_dir_ptr, _dir + size);
 	enable_pl(dir);
 	if (prctl(43, 0, 0, 0, 0)) {
 		printf("no MPX support\n");
@@ -570,7 +566,7 @@ void setup_handler()
 
 void mpx_prepare(void)
 {
-	printf("pl: hello...\n");
+	dprintf2("%s()\n", __func__);
 	setup_handler();
 	process_specific_init();
 }
@@ -734,13 +730,13 @@ void __print_context(void *__print_xsave_buffer, int line)
 	uint64_t *cfg    = (uint64_t *)(__print_xsave_buffer + MPX_CONFIG_OFFSET);
 
 	int i;
-	printf("%s()::%d\n", "print_context", line);
+	eprintf("%s()::%d\n", "print_context", line);
 	for (i = 0; i < 4; i++) {
-		printf("bound[%d]: 0x%016lx 0x%016lx(0x%016lx)\n", i,
+		eprintf("bound[%d]: 0x%016lx 0x%016lx(0x%016lx)\n", i,
 		       (ULONG_MPX)bounds[i*2], ~(ULONG_MPX)bounds[i*2+1], (ULONG_MPX)bounds[i*2+1]);
 	}
 
-	printf("cpcfg: %jx  cpstatus: %jx\n", cfg[0], cfg[1]);
+	eprintf("cpcfg: %jx  cpstatus: %jx\n", cfg[0], cfg[1]);
 }
 #define print_context(x) __print_context(x, __LINE__)
 #ifdef DEBUG
@@ -786,17 +782,13 @@ static inline bool compare_context(void *__xsave_buffer)
 
 	int i;
 	for (i = 0; i < 4; i++) {
-		/* printf("bound %d\n", i);
-		//printf("shadow{%llx/%llx}\nbounds{%llx/%llx}\n",
-		//       shadow_plb[i][0], shadow_plb[i][1],
-		//       bounds[i*2], bounds[i*2+1]);
-		printf("shadow{%lx/%lx}\nbounds{%lx/%lx}\n",
-		       (ULONG_MPX)shadow_plb[i][0], (ULONG_MPX)shadow_plb[i][1],
-		       (ULONG_MPX)bounds[i*2], (ULONG_MPX)bounds[i*2+1]); */
+		dprintf3("shadow[%d]{%016lx/%016lx}\nbounds[%d]{%016lx/%016lx}\n",
+		       i, (ULONG_MPX)shadow_plb[i][0], (ULONG_MPX)shadow_plb[i][1],
+		       i, (ULONG_MPX)bounds[i*2],     ~(ULONG_MPX)bounds[i*2+1]);
 		if ((shadow_plb[i][0] != bounds[i*2]) ||
 		    (shadow_plb[i][1] != ~(ULONG_MPX)bounds[i*2+1])) {
-			printf("ERROR comparing shadow to real bound register %d\n", i);
-			printf("shadow{0x%016lx/0x%016lx}\nbounds{0x%016lx/0x%016lx}\n",
+			eprintf("ERROR comparing shadow to real bound register %d\n", i);
+			eprintf("shadow{0x%016lx/0x%016lx}\nbounds{0x%016lx/0x%016lx}\n",
 			       (ULONG_MPX)shadow_plb[i][0], (ULONG_MPX)shadow_plb[i][1],
 			       (ULONG_MPX)bounds[i*2], (ULONG_MPX)bounds[i*2+1]);
 			return false;
@@ -859,6 +851,7 @@ void __always_inline stdsc_shadow(int index, uint8_t *ptr, uint8_t *ptr_val)
 	shadow_map[0] = (ULONG_MPX)shadow_plb[index][0];
 	shadow_map[1] = (ULONG_MPX)shadow_plb[index][1];
 	shadow_map[2] = (ULONG_MPX)ptr_val;
+	dprintf3("%s(%d, %p, %p) set shadow map[2]: %p\n", __func__, index, ptr, ptr_val, ptr_val);
 	//ptr ignored
 }
 
@@ -868,6 +861,7 @@ void lddsc_shadow(int index, uint8_t *ptr, uint8_t *ptr_val)
 	uint64_t upper = shadow_map[1];
 	uint8_t *value = (uint8_t *)shadow_map[2];
 	if (value != ptr_val) {
+		dprintf2("%s(%d, %p, %p) init shadow bounds[%d] because %p != %p\n", __func__, index, ptr, ptr_val, index, value, ptr_val);
 		shadow_plb[index][0] = 0;
 		shadow_plb[index][1] = ~(ULONG_MPX)0;
 	} else {
@@ -939,15 +933,15 @@ static __always_inline void mpx_test_helper4_shadow(uint8_t *buf, uint8_t *ptr)
 
 static __always_inline void mpx_test_helper5(uint8_t *buf, uint8_t *ptr)
 {
-	mpx_clear_bnd0();
 	mpx_load_dsc_helper((ULONG_MPX)buf, (ULONG_MPX)ptr);
-	mpx_clear_bnd0();
 }
 
 static __always_inline void mpx_test_helper5_shadow(uint8_t *buf, uint8_t *ptr)
 {
 	lddsc_shadow(0, buf, ptr);
 }
+
+#define NR_MPX_TEST_FUNCTIONS 6
 
 /*
  * For compatability reasons, MPX will clear the bounds registers
@@ -965,6 +959,16 @@ static __always_inline void mpx_test_helper5_shadow(uint8_t *buf, uint8_t *ptr)
 	mpx_test_helper##helper_nr##_shadow(buf_shadow, ptr);	\
 } while(0)
 
+/*
+struct page_sized_buf
+{
+	char buf[PAGE_SIZE];
+};
+#define NR_BUF_HISTORY 10
+struct page_sized_buf[NR_BUF_HISTORY];
+int page_sized_buf_place = 0;
+*/
+
 static void run_helpers(int nr, uint8_t *buf, uint8_t *buf_shadow, uint8_t *ptr)
 {
 	uint64_t flags = 0x18;
@@ -977,29 +981,20 @@ static void run_helpers(int nr, uint8_t *buf, uint8_t *buf_shadow, uint8_t *ptr)
 		case 4: run_helper(4, buf, buf_shadow, ptr); break;
 		case 5: run_helper(5, buf, buf_shadow, ptr); break;
 		default:
-			abort();
+			test_failed();
 			break;
 	}
+/*
+	page_sized_buf_place++
+	if (page_sized_buf_place >= NR_BUF_HISTORY)
+		page_sized_buf_place = 0;
+*/
 	dprint_context(xsave_test_buf);
 }
 
-/*
-struct mpx_test_t {
-	void (*helper)(uint8_t *buf, uint8_t *ptr);
-	void (*helper_shadow)(uint8_t *buf, uint8_t *ptr);
-} mpx_test[] = {
-	{mpx_test_helper0, mpx_test_helper0_shadow},
-	{mpx_test_helper1, mpx_test_helper1_shadow},
-	{mpx_test_helper2, mpx_test_helper2_shadow},
-	{mpx_test_helper3, mpx_test_helper3_shadow},
-	{mpx_test_helper4, mpx_test_helper4_shadow},
-	{mpx_test_helper5, mpx_test_helper5_shadow}
-};
-*/
-
 //ULONG_MPX buf[1024];
 ULONG_MPX buf_shadow[1024]; // used to check load / store descriptors
-extern long inspect_me(unsigned long *bounds_dir);
+extern long inspect_me(struct mpx_bounds_dir *bounds_dir);
 
 long cover_buf_with_bt_entries(void *buf, long buf_len)
 {
@@ -1101,7 +1096,7 @@ void dave_free(void *ptr, long sz)
 	dprintf2("%s() ptr: %p\n", __func__, ptr);
 	if ((unsigned long)ptr > 0x100000000000) {
 		dprintf1("uh oh !!!!!!!!!!!!!!! pointer too high: %p\n", ptr);
-		abort();
+		test_failed();
 	}
 	sz = align_up(sz, sz_alignment);
 	munmap(ptr, sz);
@@ -1162,8 +1157,7 @@ void zap_everything(void)
 	if ((alignment == 1*MB) &&
 	    (sz_alignment == 1*MB)) {
 		if (after_zap != 0) {
-			printf("not empty after total zap\n");
-			sleep(9999);
+			test_failed();
 		}
 		assert(after_zap == 0);
 	}
@@ -1223,39 +1217,71 @@ void check_bounds_table_frees(void)
 	}
 }
 
-void check_mpx_insns_and_tables(void)
+void insn_test_failed(int test_nr, int test_round, void *buf, void *buf_shadow, void *ptr)
+{
+	print_context(xsave_test_buf);
+	eprintf("ERROR: test %d round %d failed\n", test_nr, test_round);
+	while (test_nr == 5) {
+		struct mpx_bounds_dir *bd = (void *)bounds_dir_ptr;
+		struct mpx_bd_entry *bde = mpx_vaddr_to_bd_entry(buf, bd);
+		printf("  bd: %p\n", bd);
+		printf("&bde: %p\n", bde);
+		printf("*bde: %p\n", *(unsigned long *)bde);
+		if (!bd_entry_valid(bde))
+			break;
+		struct mpx_bt_entry *bte = mpx_vaddr_to_bt_entry(buf, bd);
+		printf(" te: %p\n", bte);
+		printf("bte[0]: %lx\n", bte->contents[0]);
+		printf("bte[1]: %lx\n", bte->contents[1]);
+		printf("bte[2]: %lx\n", bte->contents[2]);
+		printf("bte[3]: %lx\n", bte->contents[3]);
+		break;
+	}
+	test_failed();
+}
+
+int check_mpx_insns_and_tables(void)
 {
 	int successes = 0;
 	int failures  = 0;
-	int tries = 0;
 	int buf_size = (1024*1024);
 	unsigned long *buf = malloc(buf_size);
+	const int total_nr_tests = NR_MPX_TEST_FUNCTIONS * TEST_ROUNDS;
 	int i, j;
 
 	memset(buf, 0, buf_size);
 	memset(buf_shadow, 0, sizeof(buf_shadow));
 
 	for (i = 0; i < TEST_ROUNDS; i++) {
-		for (j = 0; j <= 5; j++) {
-			tries++;
-			dprintf1("\nstarting test nr %d\n", tries);
+		uint8_t *ptr = get_random_addr() + 8;
+		for (j = 0; j < NR_MPX_TEST_FUNCTIONS; j++) {
+			if (0 && j != 5) {
+				successes++;
+				continue;
+			}
+			dprintf2("starting test %d round %d\n", j, i);
 			dprint_context(xsave_test_buf);
-			// test j+1
-			uint8_t *ptr = get_random_addr() + 8;
+			/*
+			 * test5 loads an address from the bounds tables.
+			 * The load will only complete if 'ptr' matches
+			 * the load and the store, so with random addrs,
+			 * the odds of this are very small.  Make it
+			 * higher by only moving 'ptr' 1/10 times.
+			 */
+			if (random() % 10 <= 0)
+				ptr = get_random_addr() + 8;
 			dprintf3("random ptr{%p}\n", ptr);
 			dprint_context(xsave_test_buf);
 			run_helpers(j, (void *)buf, (void *)buf_shadow, ptr);
 			dprint_context(xsave_test_buf);
 			if (!compare_context(xsave_test_buf)) {
-				print_context(xsave_test_buf);
-				printf("ERROR: test %d failed\n", tries);
-				sleep(99999);
+				insn_test_failed(j, i, buf, buf_shadow, ptr);
 				failures++;
 				goto exit;
 			}
 			successes++;
 			dprint_context(xsave_test_buf);
-			dprintf1("finished test %d\n", tries);
+			dprintf2("finished test %d round %d\n", j, i);
 			dprint_context(xsave_test_buf);
 		}
 	}
@@ -1263,31 +1289,28 @@ void check_mpx_insns_and_tables(void)
 exit:
 	dprintf2("\nabout to free:\n");
 	free(buf);
-	printf("successes: %d\n", successes);
-	printf(" failures: %d\n", failures);
-	printf("    tries: %d\n", tries);
-	printf(" expected: %jd #BRs\n", num_upper_brs + num_lower_brs);
-	printf("      saw: %d #BRs\n", br_count);
+	dprintf1("successes: %d\n", successes);
+	dprintf1(" failures: %d\n", failures);
+	dprintf1("    tests: %d\n", total_nr_tests);
+	dprintf1(" expected: %jd #BRs\n", num_upper_brs + num_lower_brs);
+	dprintf1("      saw: %d #BRs\n", br_count);
 	if (failures) {
-		printf("ERROR: non-zero number of failures\n");
+		eprintf("ERROR: non-zero number of failures\n");
 		exit(20);
 	}
-	if (successes != tries) {
-		printf("ERROR: succeded fewer than number of tries\n");
+	if (successes != total_nr_tests) {
+		eprintf("ERROR: succeded fewer than number of tries (%d != %d)\n", successes, total_nr_tests);
 		exit(21);
 	}
 	if (num_upper_brs + num_lower_brs != br_count) {
-		printf("ERROR: unexpected number of #BRs\n");
+		eprintf("ERROR: unexpected number of #BRs\n");
 		exit(22);
 	}
-	printf("\n");
-	static int iterations = 0;
-	printf("ALL TESTS PASSED!! (iteration %d)\n\n", ++iterations);
+	return 0;
 }
 
 int main(int argc, char **argv)
 {
-	printf("argc: %d\n", argc);
 	mpx_prepare();
 	srandom(11179);
 
@@ -1305,10 +1328,20 @@ int main(int argc, char **argv)
 	}
 	if ((argc < 2) ||
 	    (argc >= 2 && !strcmp(argv[1], "tabletest"))) {
+		static time_t last_print = 0;
+		time_t now;
+	
 		int i;
-		for (i = 0; i < 20000; i++)
+		for (i = 0; i < 20000000; i++) {
+			time(&now);
 			check_mpx_insns_and_tables();
+			if (now - last_print > 1) {
+				printf("iteration %d complete, OK so far\n", i+1);
+				last_print = now;
+			}
+		}
 	}
+	printf("%s completed successfully\n", argv[0]);
 	//sleep(560);
 	exit(0);
 }

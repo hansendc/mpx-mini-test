@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include "mpx-debug.h"
 #include "mpx-mm.h"
+#include "mpx-hw.h"
 
 unsigned long bounds_dir_global;
 
@@ -410,12 +411,12 @@ int main(int argc, char **argv)
 }
 #endif
 
-long inspect_me(unsigned long bounds_dir)
+long inspect_me(struct mpx_bounds_dir *bounds_dir)
 {
 	int pid = getpid();
 	pid_load_vaddrs(pid);
-	bounds_dir_global = bounds_dir;
-	dprintf4("enter %s() bounds dir: %lx\n", __func__, bounds_dir);
+	bounds_dir_global = (unsigned long)bounds_dir;
+	dprintf4("enter %s() bounds dir: %p\n", __func__, bounds_dir);
 	return inspect_pid(pid);
 }
 
