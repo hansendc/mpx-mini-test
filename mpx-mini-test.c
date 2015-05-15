@@ -61,9 +61,6 @@ static void test_failed(void)
 #ifdef __i386__
 
 /* i386 directory size is 4MB */
-#define NUM_IGN_BITS	2
-#define MPX_L2_NODE_ADDR_MASK	0xfffffffcUL
-
 #define REG_IP_IDX	REG_EIP
 #define REX_PREFIX
 
@@ -90,8 +87,6 @@ static inline void __cpuid(unsigned int *eax, unsigned int *ebx,
 
 #else /* __i386__ */
 
-#define MPX_L2_NODE_ADDR_MASK	0xfffffffffffffff8ULL
-
 #define REG_IP_IDX	REG_RIP
 #define REX_PREFIX "0x48, "
 
@@ -114,9 +109,6 @@ static inline void __cpuid(unsigned int *eax, unsigned int *ebx,
 }
 
 #endif /* !__i386__ */
-
-#define BNDSTA_ADDR_MASK	0xfffffffffffffffcULL
-#define BNDSTA_REASON_MASK	0xfffffffffffffffcULL
 
 typedef unsigned long ULONG;
 typedef ULONG ULONG_MPX;
