@@ -1200,7 +1200,7 @@ void insn_test_failed(int test_nr, int test_round, void *buf, void *buf_shadow, 
 		struct mpx_bd_entry *bde = mpx_vaddr_to_bd_entry(buf, bd);
 		printf("  bd: %p\n", bd);
 		printf("&bde: %p\n", bde);
-		printf("*bde: %p\n", *(unsigned long *)bde);
+		printf("*bde: %lx\n", *(unsigned long *)bde);
 		if (!bd_entry_valid(bde))
 			break;
 		struct mpx_bt_entry *bte = mpx_vaddr_to_bt_entry(buf, bd);
