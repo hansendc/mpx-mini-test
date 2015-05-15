@@ -61,8 +61,6 @@ static void test_failed(void)
 #ifdef __i386__
 
 /* i386 directory size is 4MB */
-#define NUM_L1_BITS	20
-#define NUM_L2_BITS	10
 #define NUM_IGN_BITS	2
 #define MPX_L2_NODE_ADDR_MASK	0xfffffffcUL
 
@@ -92,10 +90,6 @@ static inline void __cpuid(unsigned int *eax, unsigned int *ebx,
 
 #else /* __i386__ */
 
-/* x86_64 directory size is 2GB */
-#define NUM_L1_BITS	28
-#define NUM_L2_BITS	17
-#define NUM_IGN_BITS	3
 #define MPX_L2_NODE_ADDR_MASK	0xfffffffffffffff8ULL
 
 #define REG_IP_IDX	REG_RIP
@@ -127,26 +121,6 @@ static inline void __cpuid(unsigned int *eax, unsigned int *ebx,
 typedef unsigned long ULONG;
 typedef ULONG ULONG_MPX;
 typedef ULONG_MPX* PULONG_MPX;
-
-const ULONG MPX_L1_SIZE = (1UL << NUM_L1_BITS) * sizeof(ULONG);
-const ULONG MPX_MAX_L1_INDEX = (1UL << NUM_L1_BITS);
-const ULONG MPX_L2_NODE_SIZE = (1UL << NUM_L2_BITS) * (sizeof(ULONG) * 4);
-
-typedef union {
-	struct {
-		ULONG ignored:NUM_IGN_BITS;
-		ULONG l2entry:NUM_L2_BITS;
-		ULONG l1index:NUM_L1_BITS;
-	};
-	void *pointer;
-} mpx_pointer;
-
-typedef struct {
-	ULONG_MPX lb;
-	ULONG_MPX ub;
-	void *OP;
-	ULONG_MPX meta_data;
-} mpx_l2_entry;
 
 struct xsave_hdr_struct {
 	uint64_t xstate_bv;
@@ -494,7 +468,7 @@ struct mpx_bounds_dir *bounds_dir_ptr;
 
 unsigned long __bd_incore(const char *func, int line)
 {
-	unsigned long ret = nr_incore(bounds_dir_ptr, MPX_L1_SIZE);
+	unsigned long ret = nr_incore(bounds_dir_ptr, MPX_BOUNDS_DIR_SIZE_BYTES);
 	//printf("%s()::%d incore: %ld\n", func, line, ret);
 	return ret;
 }
