@@ -73,14 +73,15 @@ struct vaddr_range {
 	unsigned long start;
 	unsigned long end;
 };
-struct vaddr_range ranges[1000000];
-int nr_ranges = 0;
+struct vaddr_range *ranges;
+int nr_ranges_allocated = 0;
+int nr_ranges_populated = 0;
 int last_range = -1;
 
 
-int pid_load_vaddrs(int pid)
+int __pid_load_vaddrs(int pid)
 {
-	char *ret;
+	int ret = 0;
 	int proc_maps_fd = open_proc(pid, "maps");
 	char linebuf[10000];
 	unsigned long start;
@@ -90,9 +91,10 @@ int pid_load_vaddrs(int pid)
 	FILE *f = fdopen(proc_maps_fd, "r");
 	if (!f)
 		dave_abort();
+	nr_ranges_populated = 0;
 	while (!feof(f)) {
-		ret = fgets(linebuf, sizeof(linebuf), f);
-		if (ret == NULL) {
+		char *readret = fgets(linebuf, sizeof(linebuf), f);
+		if (readret == NULL) {
 			if (feof(f))
 				break;
 			dave_abort();
@@ -102,17 +104,49 @@ int pid_load_vaddrs(int pid)
 		if (parsed != 3)
 			dave_abort();
 
-		//printf("result[%d]: %lx-%lx<->%s\n", parsed, start, end, rest);
-		ranges[nr_ranges].start = start;
-		ranges[nr_ranges].end = end;
-		nr_ranges++;
-		if (nr_ranges >= 1000000)
-			dave_abort();
+		dprintf4("result[%d]: %lx-%lx<->%s\n", parsed, start, end, rest);
+		if (nr_ranges_populated >= nr_ranges_allocated) {
+			ret = -E2BIG;
+			break;
+		}
+		ranges[nr_ranges_populated].start = start;
+		ranges[nr_ranges_populated].end = end;
+		nr_ranges_populated++;
 	}
 	last_range = -1;
 	fclose(f);
 	close(proc_maps_fd);
-	return 0;
+	return ret;
+}
+
+int pid_load_vaddrs(int pid)
+{
+	int ret;
+
+	dprintf2("%s(%d)\n", __func__, pid);
+	if (!ranges) {
+		nr_ranges_allocated = 4;
+		ranges = malloc(nr_ranges_allocated * sizeof(ranges[0]));
+		dprintf2("%s(%d) allocated %d ranges @ %p\n", __func__, pid,
+			 nr_ranges_allocated, ranges);
+		assert(ranges != NULL);
+	}
+	do {
+		ret = __pid_load_vaddrs(pid);
+		if (!ret)
+			break;
+		if (ret == -E2BIG) {
+			dprintf2("%s(%d) need to realloc\n", __func__, pid);
+			nr_ranges_allocated *= 2;
+			ranges = realloc(ranges, nr_ranges_allocated * sizeof(ranges[0]));
+			dprintf2("%s(%d) allocated %d ranges @ %p\n", __func__, pid,
+				 nr_ranges_allocated, ranges);
+			assert(ranges != NULL);
+			dprintf1("reallocating to hold %d ranges\n", nr_ranges_allocated);
+		}
+	} while (1)
+;
+	return ret;
 }
 
 static inline int vaddr_in_range(unsigned long vaddr, struct vaddr_range *r)
@@ -131,7 +165,7 @@ static inline int vaddr_mapped_by_range(unsigned long vaddr)
 	if (last_range > 0 && vaddr_in_range(vaddr, &ranges[last_range]))
 		return 1;
 
-	for (i = 0; i < nr_ranges; i++) {
+	for (i = 0; i < nr_ranges_populated; i++) {
 		struct vaddr_range *r = &ranges[i];
 		if (vaddr_in_range(vaddr, r))
 			continue;
