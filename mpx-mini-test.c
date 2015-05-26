@@ -1245,7 +1245,12 @@ exit:
 		exit(21);
 	}
 	if (num_upper_brs + num_lower_brs != br_count) {
-		eprintf("ERROR: unexpected number of #BRs\n");
+		eprintf("ERROR: unexpected number of #BRs: %jd %jd %d\n", num_upper_brs, num_lower_brs, br_count);
+		eprintf("successes: %d\n", successes);
+		eprintf(" failures: %d\n", failures);
+		eprintf("    tests: %d\n", total_nr_tests);
+		eprintf(" expected: %jd #BRs\n", num_upper_brs + num_lower_brs);
+		eprintf("      saw: %d #BRs\n", br_count);
 		exit(22);
 	}
 	return 0;
