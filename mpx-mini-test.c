@@ -140,11 +140,7 @@ struct xsave_struct *xsave_buf = (struct xsave_struct *)buffer;
 uint8_t __attribute__((__aligned__(64))) test_buffer[4096];
 struct xsave_struct *xsave_test_buf = (struct xsave_struct *)test_buffer;
 
-//unsigned int xsave_plc_offset = 0;
 uint64_t num_bnd_chk = 0;
-
-#define handle_error(msg) \
-	do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
 static __always_inline void xrstor_state(struct xsave_struct *fx, uint64_t mask)
 {
@@ -176,19 +172,6 @@ static inline uint64_t xgetbv(uint32_t index)
 		     : "c" (index));
 	return eax + ((uint64_t)edx << 32);
 }
-
-/*
-static uint64_t read_mpx_status()
-{
-	memset(buffer, 0, sizeof(buffer));
-	xsave_state_1(xsave_buf, 0x18);
-	//print_buffer(buffer, sizeof(*xsave_buf));
-
-	//printf("xsave cndcsr: status %llx, configu %llx\n",
-	//       xsave_buf->bndcsr.status_reg, xsave_buf->bndcsr.cfg_reg_u);
-	return xsave_buf->bndcsr.status_reg;
-}
-*/
 
 static uint64_t read_mpx_status_sig(ucontext_t *uctxt)
 {
@@ -425,7 +408,7 @@ bool check_mpx_support()
 	return true;
 }
 
-void enable_pl(void* l1base)
+void enable_mpx(void* l1base)
 {
 	/* enable point lookup */
 	memset(buffer, 0, sizeof(buffer));
@@ -481,7 +464,7 @@ bool process_specific_init(void)
 	bounds_dir_ptr = (void *)_dir;
 	bd_incore();
 	dprintf1("bounds directory: 0x%p -> 0x%lx\n", bounds_dir_ptr, _dir + size);
-	enable_pl(dir);
+	enable_mpx(dir);
 	if (prctl(43, 0, 0, 0, 0)) {
 		printf("no MPX support\n");
 		abort();
@@ -535,7 +518,7 @@ void mpx_prepare(void)
 
 void mpx_cleanup(void)
 {
-	printf("pl: %jd BRs. bye...\n", num_bnd_chk);
+	printf("%s(): %jd BRs. bye...\n", __func__, num_bnd_chk);
 	//process_specific_finish();
 }
 
