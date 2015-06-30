@@ -371,40 +371,104 @@ static inline void cpuid_count(unsigned int op, int count,
         *eax = op;
         *ecx = count;
         __cpuid(eax, ebx, ecx, edx);
+	//printf("cpuid[%x/%x]: eax=%08x ebx=%08x ecx=%08x edx=%08x\n",
+	//	op, count, *eax, *ebx, *ecx, *edx);
 }
+
+#define XSTATE_CPUID            0x0000000d
+
+/*
+ * List of XSAVE features Linux knows about:
+ */
+enum xfeature_bit {
+        XSTATE_BIT_FP,
+        XSTATE_BIT_SSE,
+        XSTATE_BIT_YMM,
+        XSTATE_BIT_BNDREGS,
+        XSTATE_BIT_BNDCSR,
+        XSTATE_BIT_OPMASK,
+        XSTATE_BIT_ZMM_Hi256,
+        XSTATE_BIT_Hi16_ZMM,
+
+        XFEATURES_NR_MAX,
+};
+
+#define XSTATE_FP               (1 << XSTATE_BIT_FP)
+#define XSTATE_SSE              (1 << XSTATE_BIT_SSE)
+#define XSTATE_YMM              (1 << XSTATE_BIT_YMM)
+#define XSTATE_BNDREGS          (1 << XSTATE_BIT_BNDREGS)
+#define XSTATE_BNDCSR           (1 << XSTATE_BIT_BNDCSR)
+#define XSTATE_OPMASK           (1 << XSTATE_BIT_OPMASK)
+#define XSTATE_ZMM_Hi256        (1 << XSTATE_BIT_ZMM_Hi256)
+#define XSTATE_Hi16_ZMM         (1 << XSTATE_BIT_Hi16_ZMM)
+
+#define MPX_XSTATES		(XSTATE_BNDREGS | XSTATE_BNDCSR) /* 0x18 */
+
+bool one_bit(unsigned int x, int bit)
+{
+	return !!(x & (1<<bit));
+}
+
+void print_state_component(int state_bit_nr, char *name)
+{
+	unsigned int eax, ebx, ecx, edx;
+	unsigned int state_component_size;
+	unsigned int state_component_supervisor;
+	unsigned int state_component_user;
+	unsigned int state_component_aligned;
+
+	// See SDM Section 13.2
+	cpuid_count(XSTATE_CPUID, state_bit_nr, &eax, &ebx, &ecx, &edx);
+	assert(eax || ebx || ecx);
+	state_component_size = eax;
+	state_component_supervisor = ((!ebx) && one_bit(ecx, 0));
+	state_component_user = !one_bit(ecx, 0);
+	state_component_aligned = one_bit(ecx, 1);
+	printf("%8s: size: %d user: %d supervisor: %d aligned: %d\n",
+		name,
+		state_component_size, 	    state_component_user,
+		state_component_supervisor, state_component_aligned);
+
+}
+
+/* Intel-defined CPU features, CPUID level 0x00000001 (ecx) */
+#define XSAVE_FEATURE_BIT       (26)  /* XSAVE/XRSTOR/XSETBV/XGETBV */
+#define OSXSAVE_FEATURE_BIT     (27) /* XSAVE enabled in the OS */
 
 bool check_mpx_support()
 {
 	unsigned int eax, ebx, ecx, edx;
 
 	cpuid_count(1, 0, &eax, &ebx, &ecx, &edx);
-        printf("features 0x%x\n", ecx);
+        //printf("features 0x%x\n", ecx);
 
-	if ((!(ecx & (1 << 26))) || (!(ecx & (1 << 27))))
-		return false;
+	/* We can't do much without XSAVE, so just make these assert()'s */
+	assert(one_bit(ecx, XSAVE_FEATURE_BIT));
+	assert(one_bit(ecx, OSXSAVE_FEATURE_BIT));
+
+	/* CPUs not supporting the XSTATE CPUID leaf do not support MPX */
+	/* Is this redundant with the feature bit checks? */
+	cpuid_count(0, 0, &eax, &ebx, &ecx, &edx);
+	assert(eax >= XSTATE_CPUID);
 
         printf("XSAVE is supported by HW & OS\n");
 
-	cpuid_count(0, 0, &eax, &ebx, &ecx, &edx);
+        //printf("max cpuid leaf is 0x%x\n", eax);
 
-        printf("max cpuid leaf is 0x%x\n", eax);
+	cpuid_count(XSTATE_CPUID, 0, &eax, &ebx, &ecx, &edx);
 
-	if (eax < 0xD)
+        printf("XSAVE supported state mask: 0x%x\n", eax);
+	/* Make sure the MPX states are supported by XSAVE* */
+	if ((eax & MPX_XSTATES) != MPX_XSTATES)
 		return false;
 
-	cpuid_count(0xD, 0, &eax, &ebx, &ecx, &edx);
-
-        printf("xsave supported states: 0x%x\n", eax);
-
-	if ((eax & 0x18) != 0x18)
+	/* Make sure that the MPX states are enabled in in XCR0 */
+	if ((xgetbv(0) & MPX_XSTATES) != MPX_XSTATES)
 		return false;
 
-	if ((xgetbv(0) & 0x18) != 0x18)
-		return false;
-	//cpuid_count(0xD, 4, &eax, &ebx, &ecx, &edx);
-        //printf("MPX configu offset: 0x%x\n", ebx);
-
-	//xsave_plc_offset = ebx;
+	print_state_component(XSTATE_BIT_BNDREGS, "BNDREGS");
+	print_state_component(XSTATE_BIT_BNDCSR,  "BNDCSR");
+	
 	return true;
 }
 
@@ -1258,6 +1322,7 @@ exit:
 
 int main(int argc, char **argv)
 {
+	check_mpx_support();
 	mpx_prepare();
 	srandom(11179);
 
