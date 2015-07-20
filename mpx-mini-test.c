@@ -349,6 +349,40 @@ static uint8_t *get_next_inst_ip(uint8_t *addr)
 	return ip;
 }
 
+#ifdef si_lower
+static inline void *__si_bounds_lower(siginfo_t *si)
+{
+	return si->si_lower;
+}
+
+static inline void *__si_bounds_upper(siginfo_t *si)
+{
+	return si->si_upper;
+}
+#else
+static inline void **__si_bounds_hack(siginfo_t *si)
+{
+	void *sigfault = &si->_sifields._sigfault;
+	void *end_sigfault = sigfault + sizeof(si->_sifields._sigfault);
+	void **__si_lower = end_sigfault;
+//	void **__si_upper = end_sigfault + sizeof(void *);
+	
+	return __si_lower;
+}
+
+static inline void *__si_bounds_lower(siginfo_t *si)
+{
+	return *__si_bounds_hack(si);
+}
+
+static inline void *__si_bounds_upper(siginfo_t *si)
+{
+	return (*__si_bounds_hack(si)) + sizeof(void *);
+}
+#endif
+
+
+
 static int br_count = 0;
 
 void handler(int signum, siginfo_t* si, void* vucontext)
@@ -376,6 +410,8 @@ void handler(int signum, siginfo_t* si, void* vucontext)
 		dprintf2("  signum: %d\n", signum);
 		dprintf2("info->si_code == SEGV_BNDERR: %d\n", (si->si_code == SEGV_BNDERR));
 		dprintf2("info->si_code: %d\n", si->si_code);
+		dprintf2("info->si_lower: %p\n", __si_bounds_lower(si));
+		dprintf2("info->si_upper: %p\n", __si_bounds_upper(si));
 		for (i = 0; i < 8; i++)
 			dprintf3("[%d]: %p\n", i, si_addr_ptr[i]);
 		switch (br_reason) {
