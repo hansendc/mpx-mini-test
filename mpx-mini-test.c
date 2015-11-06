@@ -30,8 +30,6 @@ int zap_all_every_this_many_mallocs = 1000;
 
 extern long nr_incore(void *ptr, int size_bytes);
 
-#define __always_inline inline __attribute__((always_inline)
-
 #define _GNU_SOURCE
 #include <string.h>
 #include <stdio.h>
@@ -42,15 +40,62 @@ extern long nr_incore(void *ptr, int size_bytes);
 #include <stdlib.h>
 #include <ucontext.h>
 #include <sys/mman.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 #include "mpx-hw.h"
 #include "mpx-debug.h"
 #include "mpx-mm.h"
 
+#ifndef __always_inline
+#define __always_inline inline __attribute__((always_inline)
+#endif
+
+void write_int_to(char *prefix, char *file, int int_to_write)
+{
+	char buf[100];
+	int fd = open(file, O_RDWR);
+	int len;
+	int ret;
+
+	assert(fd >= 0);
+	len = snprintf(buf, sizeof(buf), "%s%d", prefix, int_to_write);
+	assert(len >= 0);
+	assert(len < sizeof(buf));
+	ret = write(fd, buf, len);
+	assert(ret == len);
+	ret = close(fd);
+	assert(!ret);
+}
+
+void write_pid_to(char *prefix, char *file)
+{
+	write_int_to(prefix, file, getpid());
+}
+
+void trace_me(void)
+{
+// tracing events dir
+#define TED "/sys/kernel/debug/tracing/events/"
+/*
+	write_pid_to("common_pid=", TED "signal/filter");
+	write_pid_to("common_pid=", TED "exceptions/filter");
+	write_int_to("", TED "signal/enable", 1);
+	write_int_to("", TED "exceptions/enable", 1);
+*/
+//	write_int_to("", "/sys/kernel/debug/tracing/set_ftrace_pid", 0);
+	write_pid_to("", "/sys/kernel/debug/tracing/set_ftrace_pid");
+	write_int_to("", "/sys/kernel/debug/tracing/trace", 0);
+}
+
 unsigned int sleep(unsigned int seconds);
 
-static void test_failed(void)
+#define test_failed() __test_failed(__FILE__, __LINE__)
+static void __test_failed(char *f, int l)
 {
+	fprintf(stderr, "abort @ %s::%d\n", f, l);
 	abort();
 	sleep(999);
 }
@@ -391,6 +436,9 @@ void handler(int signum, siginfo_t* si, void* vucontext)
 	ucontext_t* uctxt = vucontext;
 	int trapno;
 	unsigned long ip;
+
+	dprintf1("entered signal handler\n");
+
 	trapno = uctxt->uc_mcontext.gregs[REG_TRAPNO];
 	ip = uctxt->uc_mcontext.gregs[REG_IP_IDX];
 
@@ -610,16 +658,19 @@ bool process_specific_init(void)
 	if (sizeof(unsigned long) == 4)
 		size = 4UL << 20; // 4MB
 	size += 4096; // Guarantee we have the space to align it
-//	dir = malloc(size);
-	dir = mmap((void *)0x200000000000, size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+	dir = malloc(size);
+	// This makes debugging easier because the address
+	// calculations are simpler:
+	//dir = mmap((void *)0x200000000000, size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+	assert(dir != (void *) -1);
 	madvise(dir, size, MADV_NOHUGEPAGE);
 	_dir = (unsigned long)dir;
 	_dir += 0xfffUL;
 	_dir &= ~0xfffUL;
 	bounds_dir_ptr = (void *)_dir;
 	bd_incore();
-	dprintf1("bounds directory: 0x%p -> 0x%lx\n", bounds_dir_ptr, _dir + size);
-	enable_pl(dir);
+	dprintf1("bounds directory: %p -> %p\n", bounds_dir_ptr, bounds_dir_ptr + size);
+	enable_pl(bounds_dir_ptr);
 	if (prctl(43, 0, 0, 0, 0)) {
 		printf("no MPX support\n");
 		abort();
@@ -917,7 +968,7 @@ void check_lowerbound_shadow(uint8_t *ptr, int index)
 
 void check_upperbound_shadow(uint8_t *ptr, int index)
 {
-	uint64_t upper = *(ULONG_MPX *)&(shadow_plb[index][1]);
+	uint64_t upper = *(uint64_t *)&(shadow_plb[index][1]);
 	if (upper < (uint64_t)(ULONG_MPX)ptr)
 		num_upper_brs++;
 	else
@@ -1164,10 +1215,16 @@ unsigned long align_up(unsigned long alignme, unsigned long align_to)
  * completely unmapped an malloc() does not guarantee
  * that.
  */
-long alignment = 1 *MB;
+#ifdef __i386__
+long alignment = 4096;
+long sz_alignment = 4096;
+#else
+long alignment = 1 * MB;
 long sz_alignment = 1 * MB;
+#endif
 void *dave_alloc(unsigned long sz)
 {
+	unsigned long long tries = 0;
 	static void *last = 0x0;
 	void *ptr;
 
@@ -1184,11 +1241,21 @@ void *dave_alloc(unsigned long sz)
 
 		munmap(ptr, sz);
 		try_at += alignment;
+#ifdef __i386__
+		// This isn't quite correct for 32-bit binaries on 64-bit kernels
+		// since they can use the entire 32-bit address space, but it's
+		// close enough.
+		if (try_at > (void *)0xC0000000)
+#else
 		if (try_at > (void *)0x0000800000000000)
+#endif
 			try_at = (void *)0x0;
+		if (!(++tries % 10000))
+			dprintf1("stuck in %s(), tries: %lld\n", __func__, tries);
 		continue;
 	}
 	last = ptr;
+	dprintf1("dave_alloc(0x%lx) returning: %p\n", sz, ptr);
 	return ptr;
 }
 void dave_free(void *ptr, long sz)
@@ -1199,7 +1266,9 @@ void dave_free(void *ptr, long sz)
 		test_failed();
 	}
 	sz = align_up(sz, sz_alignment);
+	dprintf3("%s() ptr: %p before munmap\n", __func__, ptr);
 	munmap(ptr, sz);
+	dprintf3("%s() ptr: %p DONE\n", __func__, ptr);
 }
 
 #define NR_MALLOCS 100
@@ -1227,7 +1296,7 @@ void free_one_malloc(int index)
 	dprintf4("freed[%d]:  %p\n", index, mallocs[index].ptr);
 
 	free_ptr = (unsigned long)mallocs[index].ptr;
-	mask = (1UL<<20)-1;
+	mask = alignment-1;
 	dprintf4("lowerbits: %lx / %lx mask: %lx\n", free_ptr, (free_ptr & mask), mask);
 	assert((free_ptr & mask) == 0);
 
@@ -1241,21 +1310,29 @@ void free_one_malloc(int index)
 //	}
 }
 
+#ifdef __i386__
+#define MPX_BOUNDS_TABLE_COVERS 4096
+#else
+#define MPX_BOUNDS_TABLE_COVERS (1 * MB)
+#endif
 void zap_everything(void)
 {
 	long after_zap;
-	dprintf2("zapping everything\n");
+	long before_zap;
 	int i;
-	inspect_me(bounds_dir_ptr);
-	for (i = 0; i < NR_MALLOCS; i++)
+
+	before_zap = inspect_me(bounds_dir_ptr);
+	dprintf1("zapping everything start: %ld\n", before_zap);
+	for (i = 0; i < NR_MALLOCS; i++) {
 		free_one_malloc(i);
+	}
 	after_zap = inspect_me(bounds_dir_ptr);
-	dprintf3("zapping everything done: %ld\n", after_zap);
+	dprintf1("zapping everything done: %ld\n", after_zap);
 	// We only guarantee to empty the thing out if
 	// our allocations are exactly aligned on the
 	// boundaries of a boudns table.
-	if ((alignment == 1*MB) &&
-	    (sz_alignment == 1*MB)) {
+	if ((alignment >= MPX_BOUNDS_TABLE_COVERS) &&
+	    (sz_alignment >= MPX_BOUNDS_TABLE_COVERS)) {
 		if (after_zap != 0) {
 			test_failed();
 		}
@@ -1271,6 +1348,7 @@ int do_one_malloc(void)
 	dprintf4("%s() enter\n", __func__);
 
 	if (ptr) {
+		dprintf4("freeing one malloc at index: %d\n", rand_index);
 		free_one_malloc(rand_index);
 		if (daverandom() % (NR_MALLOCS*3) == 3) {
 			int i;
@@ -1285,7 +1363,6 @@ int do_one_malloc(void)
 
 	// 1->~1M
 	long sz = (1 + daverandom() % 1000) * 1000;
-	sz_alignment = PAGE_SIZE;
 	ptr = dave_alloc(sz);
 	if (!ptr) {
 		// If we are failing allocations, just assume we
@@ -1382,6 +1459,7 @@ int check_mpx_insns_and_tables(void)
 			successes++;
 			dprint_context(xsave_test_buf);
 			dprintf2("finished test %d round %d\n", j, i);
+			dprintf3("\n");
 			dprint_context(xsave_test_buf);
 		}
 	}
@@ -1414,6 +1492,40 @@ exit:
 	return 0;
 }
 
+/*
+ * This is supposed to SIGSEGV nicely once the kernel
+ * can no longer allocate vaddr space.
+ */
+void exhaust_vaddr_space(void)
+{
+	unsigned long ptr;
+	unsigned long skip = 12UL * 1024;
+
+	printf("%s() start\n", __func__);
+	// do not start at 0, we aren't allowed to map there
+	for (ptr = PAGE_SIZE; ptr < 0xf7788000; ptr += skip) {
+		void *ptr_ret;
+		int ret = madvise((void *)ptr, PAGE_SIZE, MADV_NORMAL);
+		if (!ret) {
+			//printf("madvise %lx ret: %d\n", ptr, ret);
+			continue;
+		}
+		ptr_ret = mmap((void *)ptr, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+		if (ptr_ret != (void *)ptr) {
+			perror("mmap");
+			printf("mmap(%lx) ret: %p\n", ptr, ptr_ret);
+			sleep(999);
+		}
+		if (!(ptr & 0xffffff))
+			printf("mmap(%lx) ret: %p\n", ptr, ptr_ret);
+	}
+	for (ptr = PAGE_SIZE; ptr < 0xf7788000; ptr += skip) {
+		cover_buf_with_bt_entries((void *)ptr, PAGE_SIZE);
+	}
+	printf("%s() end\n", __func__);
+}
+
+
 int main(int argc, char **argv)
 {
 	check_mpx_support();
@@ -1424,6 +1536,8 @@ int main(int argc, char **argv)
 	init();
 	bd_incore();
 
+	trace_me();
+
 	xsave_state((void *)xsave_test_buf, 0x1f);
 	if (!compare_context(xsave_test_buf))
 		printf("Init failed\n");
@@ -1431,6 +1545,10 @@ int main(int argc, char **argv)
 	if (argc >= 2 && !strcmp(argv[1], "unmaptest")) {
 		check_bounds_table_frees();
 		printf("done with malloc() fun\n");
+	}
+	if (argc >= 2 && !strcmp(argv[1], "vaddrexhaust")) {
+		exhaust_vaddr_space();
+		printf("done with vaddr space fun\n");
 	}
 	if ((argc < 2) ||
 	    (argc >= 2 && !strcmp(argv[1], "tabletest"))) {
@@ -1451,5 +1569,3 @@ int main(int argc, char **argv)
 	//sleep(560);
 	exit(0);
 }
-
-

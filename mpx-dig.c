@@ -17,6 +17,15 @@
 
 unsigned long bounds_dir_global;
 
+#define mpx_dig_abort()	__mpx_dig_abort(__FILE__, __func__, __LINE__)
+void static inline __mpx_dig_abort(const char *file, const char *func, int line)
+{
+	fprintf(stderr, "MPX dig abort @ %s::%d in %s()\n", file, line, func);
+	printf("MPX dig abort @ %s::%d in %s()\n", file, line, func);
+	abort();
+}
+
+
 /*
  * Written by Dave Hansen <dave.hansen@intel.com>
  *
@@ -35,13 +44,13 @@ long nr_incore(void *ptr, unsigned long size_bytes)
 	unsigned char *vec = malloc(vec_len);
 	//printf("vec size bytes: %ld\n", vec_len);
 	if (!vec)
-		abort();
+		mpx_dig_abort();
 
 	int incore_ret = mincore(ptr, size_bytes, vec);
 	if (incore_ret) {
 		printf("mincore ret: %d\n", incore_ret);
 		perror("mincore");
-		abort();
+		mpx_dig_abort();
 	}
 	for (i = 0; i < vec_len; i++)
 		ret += vec[i];
@@ -65,9 +74,9 @@ void __dave_abort(int line)
 {
 	perror("abort");
 	printf("abort @ %d\n", line);
-	abort();
+	mpx_dig_abort();
 }
-#define dave_abort() __dave_abort(__LINE__);
+#define dave_mpx_dig_abort() __dave_abort(__LINE__);
 
 struct vaddr_range {
 	unsigned long start;
@@ -90,19 +99,19 @@ int __pid_load_vaddrs(int pid)
 
 	FILE *f = fdopen(proc_maps_fd, "r");
 	if (!f)
-		dave_abort();
+		dave_mpx_dig_abort();
 	nr_ranges_populated = 0;
 	while (!feof(f)) {
 		char *readret = fgets(linebuf, sizeof(linebuf), f);
 		if (readret == NULL) {
 			if (feof(f))
 				break;
-			dave_abort();
+			dave_mpx_dig_abort();
 		}
 
 		int parsed = sscanf(linebuf, "%lx-%lx%s", &start, &end, rest);
 		if (parsed != 3)
-			dave_abort();
+			dave_mpx_dig_abort();
 
 		dprintf4("result[%d]: %lx-%lx<->%s\n", parsed, start, end, rest);
 		if (nr_ranges_populated >= nr_ranges_allocated) {
@@ -144,8 +153,10 @@ int pid_load_vaddrs(int pid)
 			assert(ranges != NULL);
 			dprintf1("reallocating to hold %d ranges\n", nr_ranges_allocated);
 		}
-	} while (1)
-;
+	} while (1);
+
+	dprintf2("%s(%d) done\n", __func__, pid);
+
 	return ret;
 }
 
@@ -175,36 +186,42 @@ static inline int vaddr_mapped_by_range(unsigned long vaddr)
 	return 0;
 }
 
-#define ADDRESS_SPACE_SIZE  (1UL<<48)
-const unsigned long bounds_dir_size = 2 * (1UL << 30);
-#define BOUNDS_DIR_NR_ENTRIES (bounds_dir_size / sizeof(unsigned long))
-const unsigned long bt_size = 4 * (1UL << 20); // 4MB
+#ifdef __i386__
+#define ADDRESS_SPACE_SIZE  (1ULL<<32)
+#define MPX_BOUNDS_DIR_SIZE (4 * (1ULL << 20))
+#define MPX_BOUNDS_TABLE_SIZE (16 * (1ULL << 10))
+#else
+#define ADDRESS_SPACE_SIZE  (1ULL<<48)
+#define MPX_BOUNDS_DIR_SIZE (2 * (1ULL << 30))
+#define MPX_BOUNDS_TABLE_SIZE (4 * (1ULL << 20))
+#endif
+
 const int bt_entry_size_bytes = sizeof(unsigned long) * 4;
 
 void *read_bounds_table_into_buf(unsigned long table_vaddr)
 {
 #ifdef MPX_DIG_STANDALONE
-	static char bt_buf[bt_size];
+	static char bt_buf[MPX_BOUNDS_TABLE_SIZE];
 	off_t seek_ret = lseek(fd, table_vaddr, SEEK_SET);
 	//printf("seeked to: %lx\n", seek_ret);
 	if (seek_ret != table_vaddr)
-		dave_abort();
+		dave_mpx_dig_abort();
 
 	int read_ret = read(fd, &bt_buf, sizeof(bt_buf));
 	//printf("%s() read: %d\n", __func__, read_ret);
 	if (read_ret != sizeof(bt_buf))
-		dave_abort();
+		dave_mpx_dig_abort();
 	return &bt_buf;
 #else
 /*
 //This mincore stuff works, but the bounds tables are not
 //sparse enough to make it worthwhile
-	unsigned char incore_vec[bt_size / PAGE_SIZE];
- 	int incore_ret = mincore(bt_buf, bt_size, &incore_vec[0]);
+	unsigned char incore_vec[MPX_BOUNDS_TABLE_SIZE / PAGE_SIZE];
+ 	int incore_ret = mincore(bt_buf, MPX_BOUNDS_TABLE_SIZE, &incore_vec[0]);
 	if (incore_ret) {
 		printf("mincore ret: %d\n", incore_ret);
 		perror("mincore");
-		dave_abort();
+		dave_mpx_dig_abort();
 	}
 */
 	return (void *)table_vaddr;
@@ -217,24 +234,29 @@ int dump_table(unsigned long table_vaddr, unsigned long base_controlled_vaddr, u
 	int nr_entries = 0;
 	int do_abort = 0;
 
-	//printf("%s() base_controlled_vaddr: 0x%012lx bde_vaddr: 0x%012lx\n", __func__, base_controlled_vaddr, bde_vaddr);
+	dprintf3("%s() base_controlled_vaddr: 0x%012lx bde_vaddr: 0x%012lx\n", __func__, base_controlled_vaddr, bde_vaddr);
 
 	char *bt_buf = read_bounds_table_into_buf(table_vaddr);
+	
+	dprintf4("%s() read done\n", __func__);
 
 	for (offset_inside_bt = 0;
-	     offset_inside_bt < bt_size;
+	     offset_inside_bt < MPX_BOUNDS_TABLE_SIZE;
 	     offset_inside_bt += bt_entry_size_bytes) {
+		dprintf4("%s() offset_inside_bt: 0x%lx of 0x%llx\n", __func__,
+			offset_inside_bt, MPX_BOUNDS_TABLE_SIZE);
 		unsigned long *bt_entry_buf = (void *)&bt_buf[offset_inside_bt];
 		if (!bt_buf) {
 			printf("null bt_buf\n");
-			abort();
+			mpx_dig_abort();
 		}
 		if (!bt_entry_buf) {
 			printf("null bt_entry_buf\n");
-			abort();
+			mpx_dig_abort();
 		}
 		//if (!incore_vec[page_nr])
 		//	continue;
+		dprintf4("%s() reading *bt_entry_buf @ %p\n", __func__, bt_entry_buf);
 		if (!bt_entry_buf[0] && !bt_entry_buf[1] && !bt_entry_buf[2] && !bt_entry_buf[3])
 			continue;
 
@@ -260,7 +282,7 @@ int dump_table(unsigned long table_vaddr, unsigned long base_controlled_vaddr, u
 			printf("          table_vaddr: %016lx\n", table_vaddr);
 			printf("          entry vaddr: %016lx @ offset %lx\n", table_vaddr + offset_inside_bt, offset_inside_bt);
 			do_abort = 1;
-			abort();
+			mpx_dig_abort();
 		}
 		continue;
 
@@ -271,7 +293,8 @@ int dump_table(unsigned long table_vaddr, unsigned long base_controlled_vaddr, u
 		printf("\n");
 	}
 	if (do_abort)
-		abort();
+		mpx_dig_abort();
+	dprintf4("%s() done\n",  __func__);
 	return nr_entries;
 }
 
@@ -280,31 +303,41 @@ int search_bd_buf(char *buf, int len_bytes, unsigned long bd_offset_bytes, int *
 	unsigned long i;
 	int total_entries = 0;
 
-	dprintf3("%s(%p, %x, %lx, ...)\n", __func__, buf, len_bytes, bd_offset_bytes);
+	dprintf3("%s(%p, %x, %lx, ...) buf end: %p\n", __func__, buf, len_bytes, bd_offset_bytes,
+		buf + len_bytes);
 
 	for (i = 0; i < len_bytes; i += sizeof(unsigned long)) {
+		dprintf4("loop begin i: %ld\n", i);
 		unsigned long bd_index = (bd_offset_bytes + i) / sizeof(unsigned long);
-		unsigned long bounds_dir_entry = *(unsigned long *)&buf[i];
+		unsigned long *bounds_dir_entry_ptr = (unsigned long *)&buf[i];
+		unsigned long bounds_dir_entry;
+
+		dprintf4("%s() loop i: %ld bounds_dir_entry_ptr: %p\n", __func__, i,
+				bounds_dir_entry_ptr);
+	
+		bounds_dir_entry = *bounds_dir_entry_ptr;
 		if (!bounds_dir_entry) {
-			dprintf4("no bounds dir at index %ld / 0x%lx start at offset:%lx %lx\n", bd_index, bd_index,
+			dprintf4("no bounds dir at index 0x%lx / 0x%lx start at offset:%lx %lx\n", bd_index, bd_index,
 					bd_offset_bytes, i);
 			continue;
 		}
+		dprintf3("found bounds_dir_entry: 0x%lx @ index 0x%lx buf ptr: %p\n", bounds_dir_entry, i,
+					&buf[i]);
 		// mask off the enable bit:
 		bounds_dir_entry &= ~0x1;
-		dprintf4("found bounds_dir_entry: %lx @ index %lx ptr: %p\n", bounds_dir_entry, i,
-					&buf[i]);
 		(*nr_populated_bdes)++;
+		dprintf4("nr_populated_bdes: %p\n", nr_populated_bdes);
+		dprintf4("*nr_populated_bdes: %d\n", *nr_populated_bdes);
 
 		unsigned long bt_start = bounds_dir_entry;
-		unsigned long bt_tail = bounds_dir_entry + bt_size - 1;
+		unsigned long bt_tail = bounds_dir_entry + MPX_BOUNDS_TABLE_SIZE - 1;
 		if (!vaddr_mapped_by_range(bt_start)) {
-			printf("bounds directory %lx points to nowhere\n", bounds_dir_entry);
-			abort();
+			printf("bounds directory 0x%lx points to nowhere\n", bounds_dir_entry);
+			mpx_dig_abort();
 		}
 		if (!vaddr_mapped_by_range(bt_tail)) {
-			printf("bounds directory end %lx points to nowhere\n", bt_tail);
-			abort();
+			printf("bounds directory end 0x%lx points to nowhere\n", bt_tail);
+			mpx_dig_abort();
 		}
 		// Each bounds directory entry controls 1MB of
 		// virtual address space.  This variable is the
@@ -321,6 +354,7 @@ int search_bd_buf(char *buf, int len_bytes, unsigned long bd_offset_bytes, int *
 				bd_index, buf+i,
 				bounds_dir_entry, nr_entries, total_entries, bd_for_vaddr, bd_for_vaddr + (1UL<<20));
 	}
+	dprintf3("%s(%p, %x, %lx, ...) done\n", __func__, buf, len_bytes, bd_offset_bytes);
 	return total_entries;
 }
 
@@ -334,11 +368,11 @@ void *fill_bounds_dir_buf_other(long byte_offset_inside_bounds_dir,
 	off_t seek_ret = lseek(proc_pid_mem_fd, seekto, SEEK_SET);
 
 	if (seek_ret != seekto)
-		dave_abort();
+		dave_mpx_dig_abort();
 	int read_ret = read(proc_pid_mem_fd, buffer, buffer_size_bytes);
 	// there shouldn't practically be short reads of /proc/$pid/mem
 	if (read_ret != buffer_size_bytes)
-		dave_abort();
+		dave_mpx_dig_abort();
 	return buffer;
 }
 void *fill_bounds_dir_buf_self(long byte_offset_inside_bounds_dir,
@@ -362,7 +396,7 @@ void *fill_bounds_dir_buf_self(long byte_offset_inside_bounds_dir,
 	if (incore_ret) {
 		printf("mincore ret: %d\n", incore_ret);
 		perror("mincore");
-		dave_abort();
+		dave_mpx_dig_abort();
 	}
 	for (i = 0; i < sizeof(vec); i++)
 		incore += vec[i];
@@ -387,11 +421,11 @@ int inspect_pid(int pid)
 		inspect_self = 1;
 	} else {
 		dprintf4("inspecting pid %d\n", pid);
-		abort();
+		mpx_dig_abort();
 	}
 
 	for (offset_inside_bounds_dir = 0;
-	     offset_inside_bounds_dir < bounds_dir_size;
+	     offset_inside_bounds_dir < MPX_BOUNDS_DIR_SIZE;
 	     offset_inside_bounds_dir += sizeof(bounds_dir_buf)) {
 		static int bufs_skipped;
 		if (inspect_self) {
@@ -429,16 +463,16 @@ int main(int argc, char **argv)
 	err = sscanf(argv[1], "%d", &pid);
 	printf("parsing: '%s', err: %d\n", argv[1], err);
 	if (err != 1)
-		dave_abort();
+		dave_mpx_dig_abort();
 
 	err = sscanf(argv[2], "%lx", &bounds_dir_global);
 	printf("parsing: '%s': %d\n", argv[2], err);
 	if (err != 1)
-		dave_abort();
+		dave_mpx_dig_abort();
 
 	proc_pid_mem_fd = open_proc(pid, "mem");
 	if (proc_pid_mem_fd < 0)
-		dave_abort();
+		dave_mpx_dig_abort();
 
 	inspect_pid(pid);
 	return 0;
