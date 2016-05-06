@@ -493,18 +493,17 @@ bool check_mpx_support()
 
 	cpuid_count(XSTATE_CPUID, 0, &eax, &ebx, &ecx, &edx);
 
-        printf("XSAVE supported state mask: 0x%x\n", eax);
-	/* Make sure the MPX states are supported by XSAVE* */
-	if ((eax & MPX_XSTATES) != MPX_XSTATES)
-		return false;
+	printf("XSAVE processor supported state mask: 0x%x\n", eax);
+	printf("XSAVE OS supported state mask: 0x%lx\n", xgetbv(0));
 
+	/* Make sure the MPX states are supported by XSAVE* */
+	assert((xgetbv(0) & MPX_XSTATES) == MPX_XSTATES);
 	/* Make sure that the MPX states are enabled in in XCR0 */
-	if ((xgetbv(0) & MPX_XSTATES) != MPX_XSTATES)
-		return false;
+	assert((eax & MPX_XSTATES) == MPX_XSTATES);
 
 	print_state_component(XSTATE_BIT_BNDREGS, "BNDREGS");
 	print_state_component(XSTATE_BIT_BNDCSR,  "BNDCSR");
-	
+
 	return true;
 }
 
