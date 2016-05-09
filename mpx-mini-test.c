@@ -550,12 +550,17 @@ bool process_specific_init(void)
 	unsigned long *dir;
 	unsigned long _dir;
 
-	size = 2UL << 31; // 2GB
+	size = 2UL << 30; // 2GB
 	if (sizeof(unsigned long) == 4)
 		size = 4UL << 20; // 4MB
 	size += 4096; // Guarantee we have the space to align it
 //	dir = malloc(size);
+	dprintf1("trying to allocate %ld MB bounds directory\n", (size >> 20));
 	dir = mmap((void *)0x200000000000, size, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
+	if (dir == (void *)-1) {
+		perror("unable to allocate bounds directory");
+		abort();
+	}
 	madvise(dir, size, MADV_NOHUGEPAGE);
 	_dir = (unsigned long)dir;
 	_dir += 0xfffUL;
