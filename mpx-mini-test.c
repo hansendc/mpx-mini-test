@@ -628,12 +628,29 @@ unsigned long __bd_incore(const char *func, int line)
 }
 #define bd_incore() __bd_incore(__func__, __LINE__)
 
+void check_clear(void *ptr, unsigned long sz)
+{
+	unsigned long *i;
+
+	for (i = ptr; (void *)i < ptr + sz; i++) {
+		if (*i) {
+			dprintf1("%p is NOT clear at %p\n", ptr, i);
+			assert(0);
+		}
+	}
+	dprintf1("%p is clear for %lx\n", ptr, sz);
+}
+
+void check_clear_bd(void)
+{
+	check_clear(bounds_dir_ptr, 2UL << 30);
+}
+
 #define USE_MALLOC_FOR_BOUNDS_DIR 1
 bool process_specific_init(void)
 {
 	unsigned long size;
 	unsigned long *dir;
-	unsigned long _dir;
 	unsigned long pad = 4096; // Guarantee we have the space to align it
 
 	size = 2UL << 30; // 2GB
@@ -642,8 +659,13 @@ bool process_specific_init(void)
 	dprintf1("trying to allocate %ld MB bounds directory\n", (size >> 20));
 
 	if (USE_MALLOC_FOR_BOUNDS_DIR) {
+		unsigned long _dir;
 		dir = malloc(size + pad);
 		assert(dir);
+		_dir = (unsigned long)dir;
+		_dir += 0xfffUL;
+		_dir &= ~0xfffUL;
+		dir = (void *)_dir;
 	} else {
 		// This makes debugging easier because the address
 		// calculations are simpler:
@@ -652,21 +674,20 @@ bool process_specific_init(void)
 			perror("unable to allocate bounds directory");
 			abort();
 		}
+		check_clear(dir, size);
 	}
-	_dir = (unsigned long)dir;
-	_dir += 0xfffUL;
-	_dir &= ~0xfffUL;
-	bounds_dir_ptr = (void *)_dir;
+	bounds_dir_ptr = (void *)dir;
 	madvise(bounds_dir_ptr, size, MADV_NOHUGEPAGE);
 	bd_incore();
-	dprintf1("bounds directory: 0x%p -> 0x%lx\n", bounds_dir_ptr, _dir + size);
+	dprintf1("bounds directory: 0x%p -> 0x%p\n", bounds_dir_ptr, (char *)bounds_dir_ptr + size);
+	check_clear(dir, size);
 	enable_mpx(dir);
+	check_clear(dir, size);
 	if (prctl(43, 0, 0, 0, 0)) {
 		printf("no MPX support\n");
 		abort();
 		return false;
 	}
-
 	return true;
 }
 
@@ -1243,7 +1264,7 @@ void *dave_alloc(unsigned long sz)
 		continue;
 	}
 	last = ptr;
-	dprintf1("dave_alloc(0x%lx) returning: %p\n", sz, ptr);
+	dprintf3("dave_alloc(0x%lx) returning: %p\n", sz, ptr);
 	return ptr;
 }
 void dave_free(void *ptr, long sz)
@@ -1333,10 +1354,10 @@ int do_one_malloc(void)
 	int rand_index = (daverandom() % NR_MALLOCS);
 	void *ptr = mallocs[rand_index].ptr;
 
-	dprintf4("%s() enter\n", __func__);
+	dprintf3("%s() enter\n", __func__);
 
 	if (ptr) {
-		dprintf4("freeing one malloc at index: %d\n", rand_index);
+		dprintf3("freeing one malloc at index: %d\n", rand_index);
 		free_one_malloc(rand_index);
 		if (daverandom() % (NR_MALLOCS*3) == 3) {
 			int i;
@@ -1355,12 +1376,12 @@ int do_one_malloc(void)
 	if (!ptr) {
 		// If we are failing allocations, just assume we
 		// are out of memory and zap everything.
-		dprintf1("zapping everything because out of memory\n");
+		dprintf3("zapping everything because out of memory\n");
 		zap_everything();
 		return -1;
 	}
 
-	dprintf4("malloc: %p size: 0x%lx\n", ptr, sz);
+	dprintf3("malloc: %p size: 0x%lx\n", ptr, sz);
 	mallocs[rand_index].nr_filled_btes = cover_buf_with_bt_entries(ptr, sz);
 	mallocs[rand_index].ptr = ptr;
 	mallocs[rand_index].size = sz;
@@ -1489,7 +1510,7 @@ void exhaust_vaddr_space(void)
 	unsigned long ptr;
 	unsigned long skip = 12UL * 1024;
 
-	printf("%s() start\n", __func__);
+	dprintf1("%s() start\n", __func__);
 	// do not start at 0, we aren't allowed to map there
 	for (ptr = PAGE_SIZE; ptr < 0xf7788000; ptr += skip) {
 		void *ptr_ret;
@@ -1510,11 +1531,11 @@ void exhaust_vaddr_space(void)
 	for (ptr = PAGE_SIZE; ptr < 0xf7788000; ptr += skip) {
 		cover_buf_with_bt_entries((void *)ptr, PAGE_SIZE);
 	}
-	printf("%s() end\n", __func__);
+	dprintf1("%s() end\n", __func__);
 }
 
 #ifndef NR_TABLETEST_ITERATIONS
-#define NR_TABLETEST_ITERATIONS 1000
+#define NR_TABLETEST_ITERATIONS 10000
 #endif
 
 int main(int argc, char **argv)
@@ -1551,6 +1572,7 @@ int main(int argc, char **argv)
 		tabletest = 1;
 	}
 	if (unmaptest) {
+		printf("executing unmaptest\n");
 		check_bounds_table_frees();
 		printf("done with malloc() fun\n");
 	}
@@ -1566,7 +1588,8 @@ int main(int argc, char **argv)
 		for (i = 0; i < NR_TABLETEST_ITERATIONS; i++) {
 			time(&now);
 			check_mpx_insns_and_tables();
-			if (now - last_print > 1) {
+			if ((now - last_print > 1) ||
+			    (i == NR_TABLETEST_ITERATIONS-1)) {
 				printf("iteration %d complete, OK so far\n", i+1);
 				last_print = now;
 			}

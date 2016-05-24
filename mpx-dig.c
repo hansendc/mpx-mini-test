@@ -428,6 +428,7 @@ int inspect_pid(int pid)
 	     offset_inside_bounds_dir < MPX_BOUNDS_DIR_SIZE;
 	     offset_inside_bounds_dir += sizeof(bounds_dir_buf)) {
 		static int bufs_skipped;
+
 		if (inspect_self) {
 			dig_bounds_dir_ptr = fill_bounds_dir_buf_self(offset_inside_bounds_dir,
 									sizeof(bounds_dir_buf),
