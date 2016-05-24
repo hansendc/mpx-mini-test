@@ -5,6 +5,8 @@
 
 // Describe the MPX Hardware Layout in here
 
+#define NR_MPX_BOUNDS_REGISTERS 4
+
 #ifdef __i386__
 
 #define MPX_BOUNDS_TABLE_ENTRY_SIZE_BYTES	16 /* 4 * 32-bits */

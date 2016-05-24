@@ -371,9 +371,35 @@ static inline void *__si_bounds_upper(siginfo_t *si)
 }
 #endif
 
-
-
 static int br_count = 0;
+static int expected_bnd_index = -1;
+uint64_t shadow_plb[NR_MPX_BOUNDS_REGISTERS][2]; // shadow MPX bound registers
+//uint64_t shadow_plc, shadow_pls;  // shadow config and status registers
+unsigned long shadow_map[NR_MPX_BOUNDS_REGISTERS];
+
+void check_siginfo_vs_shadow(siginfo_t* si)
+{
+	int siginfo_ok = 1;
+	void *shadow_lower = (void *)(unsigned long)shadow_plb[expected_bnd_index][0];
+	void *shadow_upper = (void *)(unsigned long)shadow_plb[expected_bnd_index][1];
+
+	if ((expected_bnd_index < 0) ||
+	    (expected_bnd_index >= NR_MPX_BOUNDS_REGISTERS)) {
+		fprintf(stderr, "ERROR: invalid expected_bnd_index: %d\n",
+			expected_bnd_index);
+		exit(6);
+	}
+	if (__si_bounds_lower(si) != shadow_lower)
+		siginfo_ok = 0;
+	if (__si_bounds_upper(si) != shadow_upper)
+		siginfo_ok = 0;
+
+	if (!siginfo_ok) {
+		fprintf(stderr, "ERROR: siginfo bounds do not match "
+			"shadow bounds for register %d\n", expected_bnd_index);
+		exit(7);
+	}
+}
 
 void handler(int signum, siginfo_t* si, void* vucontext)
 {
@@ -405,6 +431,8 @@ void handler(int signum, siginfo_t* si, void* vucontext)
 		dprintf2("info->si_code: %d\n", si->si_code);
 		dprintf2("info->si_lower: %p\n", __si_bounds_lower(si));
 		dprintf2("info->si_upper: %p\n", __si_bounds_upper(si));
+
+		check_siginfo_vs_shadow(si);
 		for (i = 0; i < 8; i++)
 			dprintf3("[%d]: %p\n", i, si_addr_ptr[i]);
 		switch (br_reason) {
@@ -542,7 +570,7 @@ bool check_mpx_support()
 	cpuid_count(XSTATE_CPUID, 0, &eax, &ebx, &ecx, &edx);
 
 	printf("XSAVE processor supported state mask: 0x%x\n", eax);
-	printf("XSAVE OS supported state mask: 0x%lx\n", xgetbv(0));
+	printf("XSAVE OS supported state mask: 0x%jx\n", xgetbv(0));
 
 	/* Make sure the MPX states are supported by XSAVE* */
 	assert((xgetbv(0) & MPX_XSTATES) == MPX_XSTATES);
@@ -695,9 +723,6 @@ void mpx_cleanup(void)
 //#define REX_PREFIX "0x48,"
 //#endif
 
-uint64_t shadow_plb[4][2]; // shadow MPX bound registers
-//uint64_t shadow_plc, shadow_pls;  // shadow config and status registers
-unsigned long shadow_map[4];
 uint64_t num_lower_brs = 0;
 uint64_t num_upper_brs = 0;
 
@@ -985,8 +1010,12 @@ static __always_inline void mpx_test_helper0_shadow(uint8_t *buf, uint8_t *ptr)
 
 static __always_inline void mpx_test_helper1(uint8_t *buf, uint8_t *ptr)
 {
+	/* these are hard-coded to check bnd0 */
+	expected_bnd_index = 0;
 	mpx_check_lowerbound_helper((unsigned long)(ptr-1));
 	mpx_check_upperbound_helper((unsigned long)(ptr+0x1800));
+	/* reset this since we do not expect any more bounds exceptions */
+	expected_bnd_index = -1;
 }
 
 static __always_inline void mpx_test_helper1_shadow(uint8_t *buf, uint8_t *ptr)
