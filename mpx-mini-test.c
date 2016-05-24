@@ -377,6 +377,13 @@ uint64_t shadow_plb[NR_MPX_BOUNDS_REGISTERS][2]; // shadow MPX bound registers
 //uint64_t shadow_plc, shadow_pls;  // shadow config and status registers
 unsigned long shadow_map[NR_MPX_BOUNDS_REGISTERS];
 
+/*
+ * The kernel is supposed to provide some information about the bounds
+ * exception in the siginfo.  It should match what we have in the bounds
+ * registers that we are checking against.  Just check against the shadow copy
+ * since it is easily available, and we also check that *it* matches the real
+ * registers.
+ */
 void check_siginfo_vs_shadow(siginfo_t* si)
 {
 	int siginfo_ok = 1;
@@ -433,6 +440,7 @@ void handler(int signum, siginfo_t* si, void* vucontext)
 		dprintf2("info->si_upper: %p\n", __si_bounds_upper(si));
 
 		check_siginfo_vs_shadow(si);
+
 		for (i = 0; i < 8; i++)
 			dprintf3("[%d]: %p\n", i, si_addr_ptr[i]);
 		switch (br_reason) {
@@ -1505,9 +1513,16 @@ void exhaust_vaddr_space(void)
 	printf("%s() end\n", __func__);
 }
 
+#ifndef NR_TABLETEST_ITERATIONS
+#define NR_TABLETEST_ITERATIONS 1000
+#endif
 
 int main(int argc, char **argv)
 {
+	int unmaptest = 0;
+	int vaddrexhaust = 0;
+	int tabletest = 0;
+
 	check_mpx_support();
 	mpx_prepare();
 	srandom(11179);
@@ -1522,21 +1537,33 @@ int main(int argc, char **argv)
 	if (!compare_context(xsave_test_buf))
 		printf("Init failed\n");
 
-	if (argc >= 2 && !strcmp(argv[1], "unmaptest")) {
+	if (argc >= 2) {
+		if (!strcmp(argv[1], "unmaptest"))
+			unmaptest = 1;
+		if (!strcmp(argv[1], "vaddrexhaust"))
+			vaddrexhaust = 1;
+		if (!strcmp(argv[1], "tabletest"))
+			tabletest = 1;
+	}
+	if (!(unmaptest || vaddrexhaust || tabletest)) {
+		unmaptest = 1;
+		vaddrexhaust = 1;
+		tabletest = 1;
+	}
+	if (unmaptest) {
 		check_bounds_table_frees();
 		printf("done with malloc() fun\n");
 	}
-	if (argc >= 2 && !strcmp(argv[1], "vaddrexhaust")) {
+	if (vaddrexhaust) {
 		exhaust_vaddr_space();
 		printf("done with vaddr space fun\n");
 	}
-	if ((argc < 2) ||
-	    (argc >= 2 && !strcmp(argv[1], "tabletest"))) {
+	if (tabletest) {
 		static time_t last_print = 0;
 		time_t now;
 
 		int i;
-		for (i = 0; i < 20000000; i++) {
+		for (i = 0; i < NR_TABLETEST_ITERATIONS; i++) {
 			time(&now);
 			check_mpx_insns_and_tables();
 			if (now - last_print > 1) {
