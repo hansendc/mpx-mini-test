@@ -783,8 +783,8 @@ uint64_t num_upper_brs = 0;
 #define TEST_ROUNDS 100
 
 /*
-      0F 1A /r BNDLDX—Load
-      0F 1B /r BNDSTX—Store Extended Bounds Using Address Translation
+      0F 1A /r BNDLDX-Load
+      0F 1B /r BNDSTX-Store Extended Bounds Using Address Translation
    66 0F 1A /r BNDMOV bnd1, bnd2/m128
    66 0F 1B /r BNDMOV bnd1/m128, bnd2
    F2 0F 1A /r BNDCU bnd, r/m64
@@ -872,7 +872,7 @@ static __always_inline void mpx_movbnd_from_mem_helper(uint8_t *mem)
 
 static __always_inline void mpx_store_dsc_helper(unsigned long ptr_addr, unsigned long ptr_val)
 {
-	// 0F 1B /r BNDSTX—Store Extended Bounds Using Address Translation
+	// 0F 1B /r BNDSTX-Store Extended Bounds Using Address Translation
 	// 0f 1b 04 11          	bndstx %bnd0,(%rcx,%rdx,1)
         asm volatile(".byte " "0x0f,0x1b,0x04,0x11\n\t"
                      : : "c" (ptr_addr), "d" (ptr_val)
@@ -881,7 +881,7 @@ static __always_inline void mpx_store_dsc_helper(unsigned long ptr_addr, unsigne
 
 static __always_inline void mpx_load_dsc_helper(unsigned long ptr_addr, unsigned long ptr_val)
 {
-	// 0F 1A /r BNDLDX—Load
+	// 0F 1A /r BNDLDX-Load
 	// 0f 1a 04 11          	bndldx (%rcx,%rdx,1),%bnd0
         asm volatile(".byte " "0x0f,0x1a,0x04,0x11\n\t"
                      : : "c" (ptr_addr), "d" (ptr_val)
