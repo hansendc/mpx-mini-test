@@ -225,7 +225,7 @@ int dump_table(unsigned long table_vaddr, unsigned long base_controlled_vaddr, u
 	dprintf3("%s() base_controlled_vaddr: 0x%012lx bde_vaddr: 0x%012lx\n", __func__, base_controlled_vaddr, bde_vaddr);
 
 	char *bt_buf = read_bounds_table_into_buf(table_vaddr);
-	
+
 	dprintf4("%s() read done\n", __func__);
 
 	for (offset_inside_bt = 0;
@@ -302,7 +302,7 @@ int search_bd_buf(char *buf, int len_bytes, unsigned long bd_offset_bytes, int *
 
 		dprintf4("%s() loop i: %ld bounds_dir_entry_ptr: %p\n", __func__, i,
 				bounds_dir_entry_ptr);
-	
+
 		bounds_dir_entry = *bounds_dir_entry_ptr;
 		if (!bounds_dir_entry) {
 			dprintf4("no bounds dir at index 0x%lx / 0x%lx start at offset:%lx %lx\n", bd_index, bd_index,

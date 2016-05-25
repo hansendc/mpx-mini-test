@@ -360,7 +360,7 @@ static inline void **__si_bounds_hack(siginfo_t *si)
 	void *end_sigfault = sigfault + sizeof(si->_sifields._sigfault);
 	void **__si_lower = end_sigfault;
 //	void **__si_upper = end_sigfault + sizeof(void *);
-	
+
 	return __si_lower;
 }
 
@@ -571,7 +571,7 @@ bool check_mpx_support()
 		fprintf(stderr, "processor lacks XSAVE, can not run MPX tests\n");
 		exit(0);
 	}
-		
+
 	if (!one_bit(ecx, OSXSAVE_FEATURE_BIT)) {
 		fprintf(stderr, "processor lacks OSXSAVE, can not run MPX tests\n");
 		exit(0);

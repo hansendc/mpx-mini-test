@@ -57,7 +57,7 @@ struct mpx_bt_entry {
 	union {
 		char x[MPX_BOUNDS_TABLE_ENTRY_SIZE_BYTES];
 		unsigned long contents[1];
-	}; 
+	};
 } __attribute__((packed));
 
 struct mpx_bounds_dir {
