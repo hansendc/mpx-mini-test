@@ -1,5 +1,3 @@
-#define _LARGEFILE64_SOURCE
-
 #include <stdlib.h>
 #include <sys/types.h>
 #include <unistd.h>

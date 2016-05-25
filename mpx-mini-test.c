@@ -29,6 +29,8 @@ int inspect_every_this_many_mallocs = 100;
 int zap_all_every_this_many_mallocs = 1000;
 
 #define _GNU_SOURCE
+#define _LARGEFILE64_SOURCE
+
 #include <string.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -1631,3 +1633,5 @@ int main(int argc, char **argv)
 	//sleep(560);
 	exit(0);
 }
+
+#include "mpx-dig.c"
