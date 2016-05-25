@@ -1538,6 +1538,23 @@ void exhaust_vaddr_space(void)
 #define NR_TABLETEST_ITERATIONS 10000
 #endif
 
+void mpx_table_test(void)
+{
+	static time_t last_print = 0;
+	time_t now;
+
+	int i;
+	for (i = 0; i < NR_TABLETEST_ITERATIONS; i++) {
+		time(&now);
+		check_mpx_insns_and_tables();
+		if ((now - last_print > 1) ||
+		    (i == NR_TABLETEST_ITERATIONS-1)) {
+			printf("iteration %d complete, OK so far\n", i+1);
+			last_print = now;
+		}
+	}
+}
+
 int main(int argc, char **argv)
 {
 	int unmaptest = 0;
@@ -1581,19 +1598,8 @@ int main(int argc, char **argv)
 		printf("done with vaddr space fun\n");
 	}
 	if (tabletest) {
-		static time_t last_print = 0;
-		time_t now;
-
-		int i;
-		for (i = 0; i < NR_TABLETEST_ITERATIONS; i++) {
-			time(&now);
-			check_mpx_insns_and_tables();
-			if ((now - last_print > 1) ||
-			    (i == NR_TABLETEST_ITERATIONS-1)) {
-				printf("iteration %d complete, OK so far\n", i+1);
-				last_print = now;
-			}
-		}
+		mpx_table_test();
+		printf("done with mpx bounds table test\n");
 	}
 	printf("%s completed successfully\n", argv[0]);
 	//sleep(560);
