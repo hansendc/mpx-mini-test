@@ -1353,8 +1353,9 @@ void zap_everything(void)
 	}
 }
 
-int do_one_malloc(void)
+void do_one_malloc(void)
 {
+	static int malloc_counter = 0;
 	int rand_index = (daverandom() % NR_MALLOCS);
 	void *ptr = mallocs[rand_index].ptr;
 
@@ -1382,15 +1383,16 @@ int do_one_malloc(void)
 		// are out of memory and zap everything.
 		dprintf3("zapping everything because out of memory\n");
 		zap_everything();
-		return -1;
+		goto out;
 	}
 
 	dprintf3("malloc: %p size: 0x%lx\n", ptr, sz);
 	mallocs[rand_index].nr_filled_btes = cover_buf_with_bt_entries(ptr, sz);
 	mallocs[rand_index].ptr = ptr;
 	mallocs[rand_index].size = sz;
-
-	return rand_index;
+out:
+	if ((++malloc_counter) % inspect_every_this_many_mallocs == 0)
+		inspect_me(bounds_dir_ptr);
 }
 
 void run_timed_test(void (*test_func)(void))
@@ -1419,16 +1421,10 @@ void run_timed_test(void (*test_func)(void))
 
 void check_bounds_table_frees(void)
 {
-	int i;
-
-	dprintf4("%s() enter\n", __func__);
-
+	printf("executing unmaptest\n");
 	inspect_me(bounds_dir_ptr);
-	for (i = 0; i < 1000000; i++) {
-		do_one_malloc();
-		if (i % inspect_every_this_many_mallocs == 0)
-			inspect_me(bounds_dir_ptr);
-	}
+	run_timed_test(&do_one_malloc);
+	printf("done with malloc() fun\n");
 }
 
 void insn_test_failed(int test_nr, int test_round, void *buf, void *buf_shadow, void *ptr)
@@ -1601,11 +1597,8 @@ int main(int argc, char **argv)
 		vaddrexhaust = 1;
 		tabletest = 1;
 	}
-	if (unmaptest) {
-		printf("executing unmaptest\n");
+	if (unmaptest)
 		check_bounds_table_frees();
-		printf("done with malloc() fun\n");
-	}
 	if (vaddrexhaust) {
 		exhaust_vaddr_space();
 		printf("done with vaddr space fun\n");
