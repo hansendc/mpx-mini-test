@@ -53,6 +53,10 @@ extern long nr_incore(void *ptr, int size_bytes);
 #define __always_inline inline __attribute__((always_inline)
 #endif
 
+#ifndef TEST_DURATION_SECS
+#define TEST_DURATION_SECS 3
+#endif
+
 void write_int_to(char *prefix, char *file, int int_to_write)
 {
 	char buf[100];
@@ -1534,22 +1538,25 @@ void exhaust_vaddr_space(void)
 	dprintf1("%s() end\n", __func__);
 }
 
-#ifndef NR_TABLETEST_ITERATIONS
-#define NR_TABLETEST_ITERATIONS 10000
-#endif
-
 void mpx_table_test(void)
 {
+	int done = 0;
+	long iteration = 0;
 	static time_t last_print = 0;
 	time_t now;
+	time_t start;
 
-	int i;
-	for (i = 0; i < NR_TABLETEST_ITERATIONS; i++) {
+	time(&start);
+	while (!done) {
 		time(&now);
+		if ((now - start) > TEST_DURATION_SECS)
+			done = 1;
+
 		check_mpx_insns_and_tables();
-		if ((now - last_print > 1) ||
-		    (i == NR_TABLETEST_ITERATIONS-1)) {
-			printf("iteration %d complete, OK so far\n", i+1);
+		iteration++;
+
+		if ((now - last_print > 1) || done) {
+			printf("iteration %ld complete, OK so far\n", iteration);
 			last_print = now;
 		}
 	}
