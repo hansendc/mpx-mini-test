@@ -567,13 +567,23 @@ bool check_mpx_support()
         //printf("features 0x%x\n", ecx);
 
 	/* We can't do much without XSAVE, so just make these assert()'s */
-	assert(one_bit(ecx, XSAVE_FEATURE_BIT));
-	assert(one_bit(ecx, OSXSAVE_FEATURE_BIT));
+	if (!one_bit(ecx, XSAVE_FEATURE_BIT)) {
+		fprintf(stderr, "processor lacks XSAVE, can not run MPX tests\n");
+		exit(0);
+	}
+		
+	if (!one_bit(ecx, OSXSAVE_FEATURE_BIT)) {
+		fprintf(stderr, "processor lacks OSXSAVE, can not run MPX tests\n");
+		exit(0);
+	}
 
 	/* CPUs not supporting the XSTATE CPUID leaf do not support MPX */
 	/* Is this redundant with the feature bit checks? */
 	cpuid_count(0, 0, &eax, &ebx, &ecx, &edx);
-	assert(eax >= XSTATE_CPUID);
+	if (eax < XSTATE_CPUID) {
+		fprintf(stderr, "processor lacks XSTATE CPUID leaf, can not run MPX tests\n");
+		exit(0);
+	}
 
         printf("XSAVE is supported by HW & OS\n");
 
@@ -584,10 +594,17 @@ bool check_mpx_support()
 	printf("XSAVE processor supported state mask: 0x%x\n", eax);
 	printf("XSAVE OS supported state mask: 0x%jx\n", xgetbv(0));
 
-	/* Make sure the MPX states are supported by XSAVE* */
-	assert((xgetbv(0) & MPX_XSTATES) == MPX_XSTATES);
 	/* Make sure that the MPX states are enabled in in XCR0 */
-	assert((eax & MPX_XSTATES) == MPX_XSTATES);
+	if ((eax & MPX_XSTATES) != MPX_XSTATES) {
+		fprintf(stderr, "processor lacks MPX XSTATE(s), can not run MPX tests\n");
+		exit(0);
+	}
+
+	/* Make sure the MPX states are supported by XSAVE* */
+	if ((xgetbv(0) & MPX_XSTATES) != MPX_XSTATES) {
+		fprintf(stderr, "MPX XSTATE(s) no enabled in XCR0, can not run MPX tests\n");
+		exit(0);
+	}
 
 	print_state_component(XSTATE_BIT_BNDREGS, "BNDREGS");
 	print_state_component(XSTATE_BIT_BNDCSR,  "BNDCSR");
