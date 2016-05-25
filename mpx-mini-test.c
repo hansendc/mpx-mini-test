@@ -1393,6 +1393,30 @@ int do_one_malloc(void)
 	return rand_index;
 }
 
+void run_timed_test(void (*test_func)(void))
+{
+	int done = 0;
+	long iteration = 0;
+	static time_t last_print = 0;
+	time_t now;
+	time_t start;
+
+	time(&start);
+	while (!done) {
+		time(&now);
+		if ((now - start) > TEST_DURATION_SECS)
+			done = 1;
+
+		test_func();
+		iteration++;
+
+		if ((now - last_print > 1) || done) {
+			printf("iteration %ld complete, OK so far\n", iteration);
+			last_print = now;
+		}
+	}
+}
+
 void check_bounds_table_frees(void)
 {
 	int i;
@@ -1430,7 +1454,7 @@ void insn_test_failed(int test_nr, int test_round, void *buf, void *buf_shadow, 
 	test_failed();
 }
 
-int check_mpx_insns_and_tables(void)
+void check_mpx_insns_and_tables(void)
 {
 	int successes = 0;
 	int failures  = 0;
@@ -1502,7 +1526,6 @@ exit:
 		eprintf("      saw: %d #BRs\n", br_count);
 		exit(22);
 	}
-	return 0;
 }
 
 /*
@@ -1540,26 +1563,9 @@ void exhaust_vaddr_space(void)
 
 void mpx_table_test(void)
 {
-	int done = 0;
-	long iteration = 0;
-	static time_t last_print = 0;
-	time_t now;
-	time_t start;
-
-	time(&start);
-	while (!done) {
-		time(&now);
-		if ((now - start) > TEST_DURATION_SECS)
-			done = 1;
-
-		check_mpx_insns_and_tables();
-		iteration++;
-
-		if ((now - last_print > 1) || done) {
-			printf("iteration %ld complete, OK so far\n", iteration);
-			last_print = now;
-		}
-	}
+	printf("starting mpx bounds table test\n");
+	run_timed_test(check_mpx_insns_and_tables);
+	printf("done with mpx bounds table test\n");
 }
 
 int main(int argc, char **argv)
@@ -1606,7 +1612,6 @@ int main(int argc, char **argv)
 	}
 	if (tabletest) {
 		mpx_table_test();
-		printf("done with mpx bounds table test\n");
 	}
 	printf("%s completed successfully\n", argv[0]);
 	//sleep(560);
