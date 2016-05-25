@@ -28,8 +28,6 @@
 int inspect_every_this_many_mallocs = 100;
 int zap_all_every_this_many_mallocs = 1000;
 
-extern long nr_incore(void *ptr, int size_bytes);
-
 #define _GNU_SOURCE
 #include <string.h>
 #include <stdio.h>
