@@ -186,22 +186,12 @@ static inline int vaddr_mapped_by_range(unsigned long vaddr)
 	return 0;
 }
 
-#ifdef __i386__
-#define ADDRESS_SPACE_SIZE  (1ULL<<32)
-#define MPX_BOUNDS_DIR_SIZE (4 * (1ULL << 20))
-#define MPX_BOUNDS_TABLE_SIZE (16 * (1ULL << 10))
-#else
-#define ADDRESS_SPACE_SIZE  (1ULL<<48)
-#define MPX_BOUNDS_DIR_SIZE (2 * (1ULL << 30))
-#define MPX_BOUNDS_TABLE_SIZE (4 * (1ULL << 20))
-#endif
-
 const int bt_entry_size_bytes = sizeof(unsigned long) * 4;
 
 void *read_bounds_table_into_buf(unsigned long table_vaddr)
 {
 #ifdef MPX_DIG_STANDALONE
-	static char bt_buf[MPX_BOUNDS_TABLE_SIZE];
+	static char bt_buf[MPX_BOUNDS_TABLE_SIZE_BYTES];
 	off_t seek_ret = lseek(fd, table_vaddr, SEEK_SET);
 	//printf("seeked to: %lx\n", seek_ret);
 	if (seek_ret != table_vaddr)
@@ -216,8 +206,8 @@ void *read_bounds_table_into_buf(unsigned long table_vaddr)
 /*
 //This mincore stuff works, but the bounds tables are not
 //sparse enough to make it worthwhile
-	unsigned char incore_vec[MPX_BOUNDS_TABLE_SIZE / PAGE_SIZE];
- 	int incore_ret = mincore(bt_buf, MPX_BOUNDS_TABLE_SIZE, &incore_vec[0]);
+	unsigned char incore_vec[MPX_BOUNDS_TABLE_SIZE_BYTES/ PAGE_SIZE];
+ 	int incore_ret = mincore(bt_buf, MPX_BOUNDS_TABLE_SIZE_BYTES, &incore_vec[0]);
 	if (incore_ret) {
 		printf("mincore ret: %d\n", incore_ret);
 		perror("mincore");
@@ -241,10 +231,10 @@ int dump_table(unsigned long table_vaddr, unsigned long base_controlled_vaddr, u
 	dprintf4("%s() read done\n", __func__);
 
 	for (offset_inside_bt = 0;
-	     offset_inside_bt < MPX_BOUNDS_TABLE_SIZE;
+	     offset_inside_bt < MPX_BOUNDS_TABLE_SIZE_BYTES;
 	     offset_inside_bt += bt_entry_size_bytes) {
 		dprintf4("%s() offset_inside_bt: 0x%lx of 0x%llx\n", __func__,
-			offset_inside_bt, MPX_BOUNDS_TABLE_SIZE);
+			offset_inside_bt, MPX_BOUNDS_TABLE_SIZE_BYTES);
 		unsigned long *bt_entry_buf = (void *)&bt_buf[offset_inside_bt];
 		if (!bt_buf) {
 			printf("null bt_buf\n");
@@ -330,7 +320,7 @@ int search_bd_buf(char *buf, int len_bytes, unsigned long bd_offset_bytes, int *
 		dprintf4("*nr_populated_bdes: %d\n", *nr_populated_bdes);
 
 		unsigned long bt_start = bounds_dir_entry;
-		unsigned long bt_tail = bounds_dir_entry + MPX_BOUNDS_TABLE_SIZE - 1;
+		unsigned long bt_tail = bounds_dir_entry + MPX_BOUNDS_TABLE_SIZE_BYTES - 1;
 		if (!vaddr_mapped_by_range(bt_start)) {
 			printf("bounds directory 0x%lx points to nowhere\n", bounds_dir_entry);
 			mpx_dig_abort();
@@ -425,7 +415,7 @@ int inspect_pid(int pid)
 	}
 
 	for (offset_inside_bounds_dir = 0;
-	     offset_inside_bounds_dir < MPX_BOUNDS_DIR_SIZE;
+	     offset_inside_bounds_dir < MPX_BOUNDS_TABLE_SIZE_BYTES;
 	     offset_inside_bounds_dir += sizeof(bounds_dir_buf)) {
 		static int bufs_skipped;
 

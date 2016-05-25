@@ -1531,30 +1531,38 @@ exit:
 void exhaust_vaddr_space(void)
 {
 	unsigned long ptr;
-	unsigned long skip = 12UL * 1024;
+	/* Try to make sure there is no room for a bounds table anywhere */
+	unsigned long skip = MPX_BOUNDS_TABLE_SIZE_BYTES - PAGE_SIZE;
+#ifdef __i386__
+	unsigned long max_vaddr = 0xf7788000UL;
+#else
+	unsigned long max_vaddr = 0x800000000000UL;
+#endif
 
 	dprintf1("%s() start\n", __func__);
 	// do not start at 0, we aren't allowed to map there
-	for (ptr = PAGE_SIZE; ptr < 0xf7788000; ptr += skip) {
+	for (ptr = PAGE_SIZE; ptr < max_vaddr; ptr += skip) {
 		void *ptr_ret;
 		int ret = madvise((void *)ptr, PAGE_SIZE, MADV_NORMAL);
 		if (!ret) {
-			//printf("madvise %lx ret: %d\n", ptr, ret);
+			dprintf1("madvise() %lx ret: %d\n", ptr, ret);
 			continue;
 		}
 		ptr_ret = mmap((void *)ptr, PAGE_SIZE, PROT_READ|PROT_WRITE, MAP_ANONYMOUS|MAP_PRIVATE, -1, 0);
 		if (ptr_ret != (void *)ptr) {
 			perror("mmap");
-			printf("mmap(%lx) ret: %p\n", ptr, ptr_ret);
-			sleep(999);
+			dprintf1("mmap(%lx) ret: %p\n", ptr, ptr_ret);
+			break;
 		}
 		if (!(ptr & 0xffffff))
-			printf("mmap(%lx) ret: %p\n", ptr, ptr_ret);
+			dprintf1("mmap(%lx) ret: %p\n", ptr, ptr_ret);
 	}
-	for (ptr = PAGE_SIZE; ptr < 0xf7788000; ptr += skip) {
+	for (ptr = PAGE_SIZE; ptr < max_vaddr; ptr += skip) {
+		dprintf2("covering 0x%lx with bounds table entries\n", ptr);
 		cover_buf_with_bt_entries((void *)ptr, PAGE_SIZE);
 	}
 	dprintf1("%s() end\n", __func__);
+	printf("done with vaddr space fun\n");
 }
 
 void mpx_table_test(void)
@@ -1594,18 +1602,15 @@ int main(int argc, char **argv)
 	}
 	if (!(unmaptest || vaddrexhaust || tabletest)) {
 		unmaptest = 1;
-		vaddrexhaust = 1;
+		//vaddrexhaust = 1;
 		tabletest = 1;
 	}
 	if (unmaptest)
 		check_bounds_table_frees();
-	if (vaddrexhaust) {
-		exhaust_vaddr_space();
-		printf("done with vaddr space fun\n");
-	}
-	if (tabletest) {
+	if (tabletest)
 		mpx_table_test();
-	}
+	if (vaddrexhaust)
+		exhaust_vaddr_space();
 	printf("%s completed successfully\n", argv[0]);
 	//sleep(560);
 	exit(0);
