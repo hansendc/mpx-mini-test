@@ -442,7 +442,7 @@ int inspect_pid(int pid)
 	return total_entries + nr_populated_bdes;
 }
 
-#ifndef MPX_DIG_SELF
+#ifdef MPX_DIG_REMOTE
 int main(int argc, char **argv)
 {
 	int err;

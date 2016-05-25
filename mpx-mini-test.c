@@ -1577,6 +1577,7 @@ int main(int argc, char **argv)
 	int unmaptest = 0;
 	int vaddrexhaust = 0;
 	int tabletest = 0;
+	int i;
 
 	check_mpx_support();
 	mpx_prepare();
@@ -1592,12 +1593,12 @@ int main(int argc, char **argv)
 	if (!compare_context(xsave_test_buf))
 		printf("Init failed\n");
 
-	if (argc >= 2) {
-		if (!strcmp(argv[1], "unmaptest"))
+	for (i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "unmaptest"))
 			unmaptest = 1;
-		if (!strcmp(argv[1], "vaddrexhaust"))
+		if (!strcmp(argv[i], "vaddrexhaust"))
 			vaddrexhaust = 1;
-		if (!strcmp(argv[1], "tabletest"))
+		if (!strcmp(argv[i], "tabletest"))
 			tabletest = 1;
 	}
 	if (!(unmaptest || vaddrexhaust || tabletest)) {
