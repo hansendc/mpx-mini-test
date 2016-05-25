@@ -22,7 +22,7 @@
 #else
 
 /*
-Linear Address of “pointer” (LAp)
+Linear Address of "pointer" (LAp)
  0 ->  2: ignored
  3 -> 19: index in to bounds table
 20 -> 47: index in to bounds directory
@@ -73,7 +73,7 @@ static inline unsigned long GET_BITS(unsigned long val, int bottombit, int topbi
 	int total_nr_bits = topbit - bottombit;
 	unsigned long mask = (1UL << total_nr_bits)-1;
 	val >>= bottombit;
-	return val & mask;	
+	return val & mask;
 }
 
 static inline unsigned long __vaddr_bounds_table_index(void *vaddr)
